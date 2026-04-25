@@ -1,0 +1,106 @@
+name: Release
+
+# Push a tag like v0.1.0 → builds macOS .dmg + .zip and Windows .exe + .zip,
+# then attaches them to a GitHub Release.
+#
+#   npm version patch     # bumps + tags
+#   git push --follow-tags
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create the Release and upload assets
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_glob: |
+              dist-installers/*.dmg
+              dist-installers/*.zip
+            build_script: dist:mac
+          - os: windows-latest
+            artifact_glob: |
+              dist-installers/*.exe
+              dist-installers/*.zip
+            build_script: dist:win
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild
+
+      - name: Build installers
+        env:
+          # We are NOT signing or notarizing — friends will right-click → Open
+          # on macOS the first time. To enable signing later, populate these
+          # secrets and remove this CSC_IDENTITY_AUTO_DISCOVERY=false line.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run ${{ matrix.build_script }} -- --publish never
+
+      - name: Stage installer artifacts
+        # electron-builder writes to ./release (configured in package.json
+        # build.directories.output). Copy just the user-facing installers.
+        shell: bash
+        run: |
+          mkdir -p dist-installers
+          find release -maxdepth 2 -type f \
+            \( -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) \
+            -not -path "*/mac*/*.app/*" \
+            -not -path "*/win-unpacked/*" \
+            -exec cp {} dist-installers/ \;
+          ls -la dist-installers/
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: dist-installers/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: installers
+          pattern: installers-*
+          merge-multiple: true
+
+      - name: Show what we're shipping
+        run: ls -la installers/
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installers/*
+          generate_release_notes: true
+          # Mark prereleases when the tag has a hyphen, e.g. v0.2.0-beta.1
+          prerelease: ${{ contains(github.ref_name, '-') }}

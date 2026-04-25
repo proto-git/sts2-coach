@@ -1,0 +1,66 @@
+{
+  "name": "sts2-coach",
+  "version": "0.1.0",
+  "description": "Local voice + overlay coach for Slay the Spire 2 (macOS + Windows).",
+  "main": "dist/main/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "package:mac": "electron-vite build && electron-builder --mac --dir",
+    "package:win": "electron-vite build && electron-builder --win --dir",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:all": "electron-vite build && electron-builder -mw",
+    "typecheck": "tsc --noEmit",
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "chokidar": "^4.0.1",
+    "dotenv": "^16.4.5",
+    "openai": "^4.73.0",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.dan.sts2coach",
+    "productName": "STS2 Coach",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": ["dmg", "zip"],
+      "hardenedRuntime": false
+    },
+    "win": {
+      "target": ["nsis", "zip"],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "STS2 Coach"
+    },
+    "files": [
+      "dist/**/*",
+      "knowledge/**/*",
+      "assets/**/*"
+    ]
+  }
+}

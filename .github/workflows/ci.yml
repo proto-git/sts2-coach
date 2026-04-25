@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    name: Typecheck (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # Native modules (better-sqlite3, sharp) build on install.
+        # We don't run electron-rebuild here — typecheck doesn't need it.
+        run: npm ci
+
+        # sharp publishes a Linux libvips download for Ubuntu CI; nothing extra needed.
+
+      - name: Typecheck
+        run: npm run typecheck

@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>STS2 Coach</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="card locked" id="card">
+      <div class="header" id="header">
+        <span class="pill" id="ctx">waiting</span>
+        <span class="model" id="model"></span>
+        <button class="icon-btn" id="pin" title="Unlock to move">📌</button>
+        <button class="icon-btn" id="close" title="Hide (⌥⇧S to re-trigger)">×</button>
+      </div>
+      <div class="pick" id="pick">Press ⌥⇧S for advice.</div>
+      <div class="reasoning" id="reasoning"></div>
+      <div class="runner" id="runner"></div>
+      <div class="plan-summary" id="plan-summary"></div>
+      <details class="long">
+        <summary>Full reasoning</summary>
+        <div id="long"></div>
+        <pre class="ascii-map" id="ascii-map"></pre>
+      </details>
+      <div class="footer">
+        <span id="deck-summary"></span>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
