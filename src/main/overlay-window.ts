@@ -48,10 +48,12 @@ export function createOverlayWindow(): OverlayHandle {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setAlwaysOnTop(true, 'screen-saver');
 
+  // Renderer is built as multi-entry under dist/renderer/{overlay,settings}/.
+  // Dev: ELECTRON_RENDERER_URL is the Vite dev-server root, so we append the entry path.
   if (process.env.ELECTRON_RENDERER_URL) {
-    win.loadURL(process.env.ELECTRON_RENDERER_URL);
+    win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/overlay/index.html`);
   } else {
-    win.loadFile(path.join(__dirname, '../overlay/index.html'));
+    win.loadFile(path.join(__dirname, '../renderer/overlay/index.html'));
   }
 
   // ── IPC: renderer-driven height changes (expanding "Full reasoning") ─────

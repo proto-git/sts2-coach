@@ -5,6 +5,25 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Settings window** for in-app configuration of API keys, model choice, TTS
+  provider/voice, and save-folder override. No more editing `.env` files just to
+  rotate a key. Opened from the tray menu (Settings…) and auto-popped on first
+  run if no OpenRouter key is found.
+- `config.json` stored under Electron's `userData` directory. Resolution order:
+  config.json → environment variable → hard-coded default. Existing `.env`
+  workflows keep working.
+- Coach, TTS, and the save-watcher now rebuild in place when settings are saved
+  — no app restart required.
+- Save-folder Auto-detect / Browse buttons in the Settings window for users
+  whose Slay the Spire 2 install lives somewhere unusual.
+- TTS provider "off" option for muting the voice without disabling advice.
+
+### Changed
+- Renderer build is now multi-entry (`dist/renderer/{overlay,settings}/`)
+  instead of single-bundle `dist/overlay/`. Transparent for users running
+  release builds, but local clones must `npm run build` once after pulling.
+
 ## [0.1.0] — Initial public release
 
 First public, cross-platform (macOS + Windows) build. Folds together Patches

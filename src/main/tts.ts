@@ -19,7 +19,7 @@ const execAsync = promisify(exec);
  *  Legacy alias: "say" is treated the same as "system" so older .env files
  *  that picked "say" before patch 09 still work on macOS *and* on Windows.
  */
-export type TTSProvider = 'openai' | 'system' | 'say';
+export type TTSProvider = 'openai' | 'system' | 'say' | 'off';
 
 interface TTSOptions {
   provider: TTSProvider;
@@ -42,6 +42,7 @@ export class TTS {
   async speak(text: string): Promise<void> {
     this.stop();
     if (!text.trim()) return;
+    if (this.opts.provider === 'off') return; // muted
 
     if (this.opts.provider === 'openai' && this.openai) {
       return this.speakOpenAI(text);

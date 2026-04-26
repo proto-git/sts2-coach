@@ -1,9 +1,10 @@
-import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain } from 'electron';
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
 
 dotenv.config();
 
-import { SaveWatcher } from './save-watcher';
+import { SaveWatcher, resolveSaveDir } from './save-watcher';
 import { captureScreen } from './capture';
 import { Coach } from './coach';
 import { TTS } from './tts';
@@ -14,7 +15,16 @@ import { logger } from '@shared/logger';
 import type { Advice, GameState } from '@shared/types';
 import { planOnState, type PlanDecision } from './planner';
 import { computeViewport, extractMap, inferSaveContext, renderAscii } from './map';
-import { DEFAULT_MODEL } from '@shared/models';
+import { MODEL_OPTIONS } from '@shared/models';
+import {
+  configFilePath,
+  effectiveConfig,
+  invalidateConfigCache,
+  isFirstRun,
+  saveAppConfig,
+  type AppConfig,
+} from './config';
+import { openSettingsWindow } from './settings-window';
 
 let overlay: OverlayHandle | null = null;
 let tray: Electron.Tray | null = null;
@@ -26,13 +36,48 @@ let currentRunId: number | null = null; // TODO: infer from save changes
 let lastState: GameState | null = null;
 let lastPlan: PlanDecision | null = null;
 let overlayLocked = true;
+/** Tracks whether we've already auto-popped settings on a missing-key error. */
+let autoOpenedSettingsForMissingKey = false;
 
 function overlayWin(): BrowserWindow | null {
   return overlay?.win ?? null;
 }
 
+/** Build the Coach + TTS instances from the currently effective config. */
+function buildCoachAndTTS(): { coach: Coach; tts: TTS } {
+  const eff = effectiveConfig();
+  const c = new Coach({
+    apiKey: eff.openrouterApiKey || 'missing',
+    model: eff.defaultModel,
+  });
+  // Coach uses 'system'|'openai'|'off'; TTS class historically also accepts 'say'.
+  const t = new TTS({
+    provider: eff.ttsProvider,
+    openaiApiKey: eff.openaiApiKey || undefined,
+    voice: eff.ttsVoice,
+  });
+  return { coach: c, tts: t };
+}
+
 async function doAdvise() {
   if (!coach) { logger.warn('No coach'); return; }
+  const eff = effectiveConfig();
+  if (!eff.openrouterApiKey) {
+    logger.warn('No OpenRouter API key; opening settings.');
+    if (!autoOpenedSettingsForMissingKey) {
+      autoOpenedSettingsForMissingKey = true;
+      openSettingsWindow();
+    }
+    overlayWin()?.webContents.send('advice', {
+      pick: 'Set your OpenRouter API key',
+      reasoning: 'Open the Settings window from the tray menu and paste your key.',
+      model: coach.getModel(),
+      latencyMs: 0,
+      createdAt: new Date().toISOString(),
+    } satisfies Advice);
+    overlayWin()?.show();
+    return;
+  }
   try {
     logger.info('Hotkey: advise');
     const shot = await captureScreen();
@@ -117,43 +162,53 @@ function setOverlayLocked(v: boolean) {
   if (!v) overlayWin()?.show(); // make sure it's visible while moving
 }
 
+/** Restart the SaveWatcher with the current config's saveDirOverride. */
+function restartWatcher() {
+  watcher?.stop();
+  const eff = effectiveConfig();
+  watcher = new SaveWatcher({ dirOverride: eff.saveDirOverride });
+  watcher.on('state', onWatcherState);
+  watcher.start();
+}
+
+function onWatcherState(s: GameState) {
+  lastState = s;
+  db?.insertSnapshot(s, currentRunId);
+  overlayWin()?.webContents.send('state', s);
+  // Patch 06: run the adaptive planner on every save update.
+  try {
+    if (db) {
+      const decision = planOnState(db.raw(), s);
+      if (decision) {
+        lastPlan = decision;
+        logger.info(`[planner] ${decision.summary}`);
+        if (decision.kind === 'replan' && decision.deviation) {
+          logger.info(`[planner] triggers: ${decision.deviation.details.join('; ')}`);
+        }
+      }
+    }
+  } catch (e) {
+    logger.error('planner error:', e);
+  }
+}
+
 app.on('ready', async () => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
 
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  const openaiKey     = process.env.OPENAI_API_KEY;
-  const model         = process.env.DEFAULT_MODEL || DEFAULT_MODEL;
-  const ttsProvider   = (process.env.TTS_PROVIDER as 'openai' | 'say') || 'say';
+  const eff = effectiveConfig();
+  logger.info(`config sources: ork=${eff.sources.openrouterApiKey} oai=${eff.sources.openaiApiKey} model=${eff.sources.defaultModel} saveDir=${eff.sources.saveDirOverride} tts=${eff.sources.ttsProvider}`);
 
-  if (!openrouterKey) {
-    logger.warn('OPENROUTER_API_KEY missing — advise will fail until you set it in .env');
+  if (!eff.openrouterApiKey) {
+    logger.warn('OPENROUTER_API_KEY missing — Settings window will open on first run.');
   }
 
   db    = new DB();
-  coach = new Coach({ apiKey: openrouterKey || 'missing', model });
-  tts   = new TTS({ provider: ttsProvider, openaiApiKey: openaiKey, voice: process.env.TTS_VOICE });
+  const built = buildCoachAndTTS();
+  coach = built.coach;
+  tts   = built.tts;
 
-  watcher = new SaveWatcher();
-  watcher.on('state', (s: GameState) => {
-    lastState = s;
-    db?.insertSnapshot(s, currentRunId);
-    overlayWin()?.webContents.send('state', s);
-    // Patch 06: run the adaptive planner on every save update.
-    try {
-      if (db) {
-        const decision = planOnState(db.raw(), s);
-        if (decision) {
-          lastPlan = decision;
-          logger.info(`[planner] ${decision.summary}`);
-          if (decision.kind === 'replan' && decision.deviation) {
-            logger.info(`[planner] triggers: ${decision.deviation.details.join('; ')}`);
-          }
-        }
-      }
-    } catch (e) {
-      logger.error('planner error:', e);
-    }
-  });
+  watcher = new SaveWatcher({ dirOverride: eff.saveDirOverride });
+  watcher.on('state', onWatcherState);
   watcher.start();
 
   overlay = createOverlayWindow();
@@ -163,9 +218,72 @@ app.on('ready', async () => {
   ipcMain.handle('overlay-get-locked', () => overlayLocked);
   ipcMain.on('overlay-set-locked', (_e, v: boolean) => setOverlayLocked(v));
 
+  // ── Settings window IPC ────────────────────────────────────────────────
+  ipcMain.handle('settings:load', () => {
+    // Returns the shape the renderer expects: the raw config plus a
+    // sources-by-field map plus first-run / config-path metadata.
+    const eff = effectiveConfig();
+    const { sources, ...rest } = eff;
+    return {
+      config: rest,
+      sources,
+      isFirstRun: isFirstRun(),
+      configFilePath: configFilePath(),
+    };
+  });
+
+  ipcMain.handle('settings:save', (_e, patch: Partial<AppConfig>) => {
+    try {
+      saveAppConfig(patch);
+      invalidateConfigCache(); // pick up the just-written values immediately
+      autoOpenedSettingsForMissingKey = false;
+
+      // Rebuild long-lived consumers so changes take effect without a restart.
+      const rebuilt = buildCoachAndTTS();
+      coach = rebuilt.coach;
+      tts   = rebuilt.tts;
+
+      // Save dir may have moved — restart the watcher.
+      restartWatcher();
+
+      logger.info('Settings saved; coach/tts/watcher rebuilt.');
+      return { ok: true };
+    } catch (err) {
+      logger.error('settings:save failed', err);
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle('settings:detect-save-dir', () => {
+    // Re-run platform detection ignoring any override the user has set.
+    const dir = resolveSaveDir();
+    return { path: dir, exists: fs.existsSync(dir) };
+  });
+
+  ipcMain.handle('settings:pick-save-dir', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Pick your Slay the Spire 2 save folder',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return { path: null };
+    return { path: result.filePaths[0] };
+  });
+
+  ipcMain.handle('settings:get-models', () => MODEL_OPTIONS);
+
+  ipcMain.on('settings:close', () => {
+    BrowserWindow.getAllWindows()
+      .filter((w) => w.getTitle().includes('Settings'))
+      .forEach((w) => { try { w.close(); } catch { /* ignore */ } });
+  });
+
   tray = createTray({
     getCurrentModel:  () => coach!.getModel(),
-    setModel:         (slug) => coach!.setModel(slug),
+    setModel:         (slug) => {
+      coach!.setModel(slug);
+      // Persist the choice so it survives a restart.
+      saveAppConfig({ defaultModel: slug });
+    },
     triggerAdvise:    () => doAdvise(),
     triggerDeckDump:  () => doDeckDump(),
     showOverlay:      () => overlayWin()?.show(),
@@ -175,6 +293,7 @@ app.on('ready', async () => {
     setOverlayOpacity: (v) => overlay?.setOpacity(v),
     setOverlayClickThrough: (v) => overlay?.setClickThrough(v),
     getOverlaySettings: () => overlay!.getSettings(),
+    openSettings:     () => openSettingsWindow(),
     quit:             () => app.quit(),
   });
 
@@ -185,6 +304,12 @@ app.on('ready', async () => {
   ipcMain.handle('get-state', () => lastState);
   ipcMain.handle('get-model', () => coach?.getModel());
   ipcMain.on('hide-overlay',   () => overlayWin()?.hide());
+
+  // First-run: pop settings if no API key is configured anywhere.
+  if (isFirstRun()) {
+    logger.info('First run / missing key — opening Settings.');
+    openSettingsWindow();
+  }
 });
 
 app.on('will-quit', () => {

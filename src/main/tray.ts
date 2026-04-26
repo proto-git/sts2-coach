@@ -15,6 +15,7 @@ interface TrayDeps {
   setOverlayOpacity: (v: number) => void;
   setOverlayClickThrough: (v: boolean) => void;
   getOverlaySettings: () => OverlaySettings;
+  openSettings: () => void;
   quit: () => void;
 }
 
@@ -63,6 +64,7 @@ export function createTray(deps: TrayDeps): Tray {
           click: () => { deps.setModel(m.slug); rebuild(); },
         })),
       },
+      { label: 'Settings\u2026', click: () => deps.openSettings() },
       { type: 'separator' },
       { label: 'Show overlay', click: () => deps.showOverlay() },
       { label: 'Hide overlay', click: () => deps.hideOverlay() },

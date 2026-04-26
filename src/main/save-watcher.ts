@@ -46,17 +46,19 @@ function linuxSaveDir(): string {
 }
 
 /** Ordered list of candidate roots to try; first existing one wins. */
-function candidateSaveDirs(): string[] {
+function candidateSaveDirs(extraOverride?: string): string[] {
   const platform = process.platform;
-  const overrides = process.env.STS2_SAVE_DIR ? [process.env.STS2_SAVE_DIR] : [];
+  const overrides: string[] = [];
+  if (extraOverride && extraOverride.trim().length > 0) overrides.push(extraOverride.trim());
+  if (process.env.STS2_SAVE_DIR) overrides.push(process.env.STS2_SAVE_DIR);
   if (platform === 'darwin') return [...overrides, macSaveDir()];
   if (platform === 'win32')  return [...overrides, windowsSaveDir()];
   // linux / other
   return [...overrides, linuxSaveDir(), macSaveDir(), windowsSaveDir()];
 }
 
-export function resolveSaveDir(): string {
-  const candidates = candidateSaveDirs();
+export function resolveSaveDir(override?: string): string {
+  const candidates = candidateSaveDirs(override);
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
@@ -64,12 +66,23 @@ export function resolveSaveDir(): string {
   return candidates[0];
 }
 
+export interface SaveWatcherOptions {
+  /** Optional manual override (typically from app config). Beats env var. */
+  dirOverride?: string;
+}
+
 export class SaveWatcher extends EventEmitter {
   private watcher: FSWatcher | null = null;
   private lastState: GameState | null = null;
+  private opts: SaveWatcherOptions;
+
+  constructor(opts: SaveWatcherOptions = {}) {
+    super();
+    this.opts = opts;
+  }
 
   start() {
-    const dir = resolveSaveDir();
+    const dir = resolveSaveDir(this.opts.dirOverride);
     if (!fs.existsSync(dir)) {
       logger.warn(`Save dir not found: ${dir}. Watcher will wait for it to appear.`);
     }
