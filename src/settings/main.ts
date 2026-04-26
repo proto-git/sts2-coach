@@ -30,6 +30,8 @@ interface AppConfigShape {
   saveDirOverride: string;
   ttsProvider: 'openai' | 'system' | 'off';
   ttsVoice: string;
+  readOnlyMode: boolean;
+  hotkeyDing: boolean;
 }
 
 /** Mirrors src/main/db.ts -> DiagnosticRow. */
@@ -73,6 +75,8 @@ const els = {
   ttsProvider:     $<HTMLSelectElement>('ttsProvider'),
   ttsVoice:        $<HTMLSelectElement>('ttsVoice'),
   ttsVoiceField:   $<HTMLLabelElement>('ttsVoiceField'),
+  readOnlyMode:    $<HTMLInputElement>('readOnlyMode'),
+  hotkeyDing:      $<HTMLInputElement>('hotkeyDing'),
   saveDir:         $<HTMLInputElement>('saveDir'),
   saveDirStatus:   $<HTMLSpanElement>('saveDirStatus'),
   formStatus:      $<HTMLSpanElement>('formStatus'),
@@ -118,12 +122,14 @@ async function init() {
   const { config, sources, isFirstRun, configFilePath } = await api.load();
   initialFirstRun = isFirstRun;
 
-  els.openrouterKey.value = config.openrouterApiKey;
-  els.openaiKey.value     = config.openaiApiKey;
-  els.model.value         = config.defaultModel;
-  els.ttsProvider.value   = config.ttsProvider;
-  els.ttsVoice.value      = config.ttsVoice;
-  els.saveDir.value       = config.saveDirOverride;
+  els.openrouterKey.value   = config.openrouterApiKey;
+  els.openaiKey.value       = config.openaiApiKey;
+  els.model.value           = config.defaultModel;
+  els.ttsProvider.value     = config.ttsProvider;
+  els.ttsVoice.value        = config.ttsVoice;
+  els.saveDir.value         = config.saveDirOverride;
+  els.readOnlyMode.checked  = !!config.readOnlyMode;
+  els.hotkeyDing.checked    = !!config.hotkeyDing;
 
   if (isFirstRun) {
     els.subtitle.textContent =
@@ -234,6 +240,8 @@ els.saveBtn.addEventListener('click', async () => {
       ttsProvider:      els.ttsProvider.value as AppConfigShape['ttsProvider'],
       ttsVoice:         els.ttsVoice.value,
       saveDirOverride:  els.saveDir.value.trim(),
+      readOnlyMode:     els.readOnlyMode.checked,
+      hotkeyDing:       els.hotkeyDing.checked,
     };
     const result = await api.save(patch);
     if (!result.ok) {

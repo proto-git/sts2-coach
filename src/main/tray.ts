@@ -18,6 +18,9 @@ interface TrayDeps {
   openSettings: () => void;
   /** Patch 17: opens settings window pre-focused on the Diagnostics tab. */
   openDiagnostics: () => void;
+  /** Patch 16: read-only mode (no voice + no ding). */
+  isReadOnly: () => boolean;
+  setReadOnly: (v: boolean) => void;
   quit: () => void;
 }
 
@@ -68,6 +71,12 @@ export function createTray(deps: TrayDeps): Tray {
       },
       { label: 'Settings\u2026',     click: () => deps.openSettings() },
       { label: 'Diagnostics\u2026',  click: () => deps.openDiagnostics() },
+      {
+        label: 'Read-only mode (silence voice)',
+        type: 'checkbox',
+        checked: deps.isReadOnly(),
+        click: (item) => { deps.setReadOnly(item.checked); rebuild(); },
+      },
       { type: 'separator' },
       { label: 'Show overlay', click: () => deps.showOverlay() },
       { label: 'Hide overlay', click: () => deps.hideOverlay() },

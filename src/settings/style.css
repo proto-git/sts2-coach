@@ -57,6 +57,25 @@ header h1 {
 }
 .field:last-child { margin-bottom: 0; }
 
+/* Inline checkbox-style field for boolean settings (Patch 16). */
+.field.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.field.checkbox-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--accent-strong);
+}
+.field.checkbox-field > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .label-row {
   display: flex;
   align-items: baseline;

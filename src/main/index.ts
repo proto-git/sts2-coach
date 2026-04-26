@@ -40,6 +40,14 @@ let overlayLocked = true;
 /** Tracks whether we've already auto-popped settings on a missing-key error. */
 let autoOpenedSettingsForMissingKey = false;
 
+/**
+ * Patch 16: in-memory mirror of config.readOnlyMode + config.hotkeyDing so we
+ * don't reload config on every hotkey press. Re-synced from disk whenever
+ * settings are saved (see settings:save handler).
+ */
+let readOnlyMode = false;
+let hotkeyDing   = false;
+
 function overlayWin(): BrowserWindow | null {
   return overlay?.win ?? null;
 }
@@ -60,8 +68,31 @@ function buildCoachAndTTS(): { coach: Coach; tts: TTS } {
   return { coach: c, tts: t };
 }
 
+/**
+ * Patch 16: notify the overlay that a hotkey was caught so it can flip to
+ * "Thinking…" before we even take the screenshot. Suppresses the audible
+ * ding when read-only mode is on or the user hasn't opted in.
+ */
+function emitPending(kind: 'advise' | 'deck-dump') {
+  const win = overlayWin();
+  if (!win) return;
+  win.show();
+  win.webContents.send('coach-pending', {
+    kind,
+    ding: hotkeyDing && !readOnlyMode,
+  });
+}
+
 async function doAdvise() {
-  if (!coach) { logger.warn('No coach'); return; }
+  // Fire the pending IPC first — even if we bail later, the user sees we
+  // heard them. emitPending() also calls show() so the overlay surfaces.
+  emitPending('advise');
+
+  if (!coach) {
+    logger.warn('No coach');
+    overlayWin()?.webContents.send('coach-error', 'Coach not initialized.');
+    return;
+  }
   const eff = effectiveConfig();
   if (!eff.openrouterApiKey) {
     logger.warn('No OpenRouter API key; opening settings.');
@@ -69,6 +100,8 @@ async function doAdvise() {
       autoOpenedSettingsForMissingKey = true;
       openSettingsWindow({});
     }
+    // Send a real advice payload so the overlay clears the pending state and
+    // shows actionable guidance.
     overlayWin()?.webContents.send('advice', {
       pick: 'Set your OpenRouter API key',
       reasoning: 'Open the Settings window from the tray menu and paste your key.',
@@ -140,43 +173,43 @@ async function doAdvise() {
     // Patch 17: time the TTS leg and merge into advice.timings before
     // persisting. The overlay already saw the pre-TTS advice; we update
     // the DB row with the final timing once speak() resolves.
+    // Patch 16: read-only mode suppresses TTS regardless of provider so the
+    // user can flip a single toggle for silent observation.
     const voiceLine = advice.runnerUp
       ? `${advice.pick}. ${advice.reasoning} Runner up: ${advice.runnerUp}.`
       : `${advice.pick}. ${advice.reasoning}`;
     const tTts = Date.now();
-    tts?.speak(voiceLine)
-      .then(() => {
-        const ttsMs = Date.now() - tTts;
-        if (advice.timings) advice.timings.ttsMs = ttsMs;
-        db?.insertAdvice(advice, undefined, currentRunId);
-      })
-      .catch((e) => {
-        logger.error('TTS error', e);
-        if (advice.timings) advice.timings.ttsMs = Date.now() - tTts;
-        db?.insertAdvice(advice, undefined, currentRunId);
-      });
-    // If TTS is disabled (provider 'off') speak() resolves immediately, but
-    // still ensure we persist even when there's no tts at all:
-    if (!tts) {
+    if (readOnlyMode || !tts) {
+      // Skip the speak() call entirely — record 0ms TTS leg and persist now.
+      if (advice.timings) advice.timings.ttsMs = 0;
       db?.insertAdvice(advice, undefined, currentRunId);
+    } else {
+      tts.speak(voiceLine)
+        .then(() => {
+          const ttsMs = Date.now() - tTts;
+          if (advice.timings) advice.timings.ttsMs = ttsMs;
+          db?.insertAdvice(advice, undefined, currentRunId);
+        })
+        .catch((e) => {
+          logger.error('TTS error', e);
+          if (advice.timings) advice.timings.ttsMs = Date.now() - tTts;
+          db?.insertAdvice(advice, undefined, currentRunId);
+        });
     }
   } catch (err) {
     logger.error('Advise failed:', err);
-    overlayWin()?.webContents.send('advice', {
-      pick: 'Error',
-      reasoning: String(err),
-      model: coach?.getModel() ?? '',
-      latencyMs: 0,
-      createdAt: new Date().toISOString(),
-    } satisfies Advice);
+    // Patch 16: route errors through the dedicated channel so the overlay
+    // clears its "Thinking…" state and renders an error card.
+    overlayWin()?.webContents.send('coach-error', String(err));
     overlayWin()?.show();
   }
 }
 
 async function doDeckDump() {
+  emitPending('deck-dump');
   logger.info('Hotkey: deck dump');
   if (!lastState) {
-    tts?.speak('No save data detected yet.').catch(() => {});
+    if (!readOnlyMode) tts?.speak('No save data detected yet.').catch(() => {});
     overlayWin()?.webContents.send('advice', {
       pick: 'No save data yet',
       reasoning: 'Start a run and progress one floor so the game writes a save.',
@@ -193,7 +226,16 @@ async function doDeckDump() {
     + `${deck.length} cards. ${relics.length} relics.`;
   overlayWin()?.webContents.send('state', lastState);
   overlayWin()?.show();
-  tts?.speak(line).catch(() => {});
+  if (!readOnlyMode) tts?.speak(line).catch(() => {});
+}
+
+/** Patch 16: flip read-only mode and broadcast the change. */
+function setReadOnlyMode(v: boolean) {
+  readOnlyMode = v;
+  saveAppConfig({ readOnlyMode: v });
+  invalidateConfigCache();
+  overlayWin()?.webContents.send('coach-read-only', v);
+  logger.info(`read-only mode: ${v ? 'on' : 'off'}`);
 }
 
 function setOverlayLocked(v: boolean) {
@@ -247,6 +289,10 @@ app.on('ready', async () => {
   coach = built.coach;
   tts   = built.tts;
 
+  // Patch 16: prime the in-memory mirrors from config so hotkeys are fast.
+  readOnlyMode = eff.readOnlyMode;
+  hotkeyDing   = eff.hotkeyDing;
+
   watcher = new SaveWatcher({ dirOverride: eff.saveDirOverride });
   watcher.on('state', onWatcherState);
   watcher.start();
@@ -282,6 +328,15 @@ app.on('ready', async () => {
       const rebuilt = buildCoachAndTTS();
       coach = rebuilt.coach;
       tts   = rebuilt.tts;
+
+      // Patch 16: re-sync the read-only / ding mirrors and notify overlay.
+      const fresh = effectiveConfig();
+      const wasReadOnly = readOnlyMode;
+      readOnlyMode = fresh.readOnlyMode;
+      hotkeyDing   = fresh.hotkeyDing;
+      if (wasReadOnly !== readOnlyMode) {
+        overlayWin()?.webContents.send('coach-read-only', readOnlyMode);
+      }
 
       // Save dir may have moved — restart the watcher.
       restartWatcher();
@@ -349,6 +404,8 @@ app.on('ready', async () => {
     getOverlaySettings: () => overlay!.getSettings(),
     openSettings:     () => openSettingsWindow(),
     openDiagnostics:  () => openSettingsWindow({ hash: 'diagnostics' }),
+    isReadOnly:       () => readOnlyMode,
+    setReadOnly:      (v) => { setReadOnlyMode(v); },
     quit:             () => app.quit(),
   });
 
@@ -358,6 +415,7 @@ app.on('ready', async () => {
 
   ipcMain.handle('get-state', () => lastState);
   ipcMain.handle('get-model', () => coach?.getModel());
+  ipcMain.handle('coach-get-read-only', () => readOnlyMode);
   ipcMain.on('hide-overlay',   () => overlayWin()?.hide());
 
   // First-run: pop settings if no API key is configured anywhere.

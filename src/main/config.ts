@@ -41,6 +41,19 @@ export interface AppConfig {
   ttsProvider: 'openai' | 'system' | 'off';
   /** OpenAI TTS voice name (only used when ttsProvider='openai'). */
   ttsVoice: string;
+  /**
+   * Patch 16: read-only mode. When true, the coach behaves as an observer
+   * only \u2014 no voice output, no hotkey ding. The overlay still updates.
+   * Independent of ttsProvider so toggling on/off restores the user's
+   * preferred voice setting.
+   */
+  readOnlyMode: boolean;
+  /**
+   * Patch 16: short audible "chime" played on \u2325\u21E7S so the user knows
+   * the hotkey was caught even before the overlay updates. Default off to
+   * avoid surprising new users; many will prefer the silent visual ack.
+   */
+  hotkeyDing: boolean;
   /** Bumped on schema migrations \u2014 reserved for future use. */
   schemaVersion: number;
 }
@@ -54,6 +67,8 @@ const DEFAULTS: AppConfig = {
   saveDirOverride: '',
   ttsProvider: 'system',
   ttsVoice: 'alloy',
+  readOnlyMode: false,
+  hotkeyDing: false,
   schemaVersion: SCHEMA_VERSION,
 };
 
@@ -158,6 +173,10 @@ export function effectiveConfig(): EffectiveConfig {
     // Normalize legacy 'say' alias (Patch 09 used 'say' for system TTS in .env).
     ttsProvider:      ((tts.value as string) === 'say' ? 'system' : tts.value) as AppConfig['ttsProvider'],
     ttsVoice:         voice.value,
+    // Patch 16 \u2014 currently config-only. Env-var support can be added later
+    // if anyone asks; the tray toggle covers the common case.
+    readOnlyMode:     c.readOnlyMode,
+    hotkeyDing:       c.hotkeyDing,
     schemaVersion:    c.schemaVersion,
     sources: {
       openrouterApiKey: ork.source,
@@ -189,6 +208,8 @@ function sanitize(c: AppConfig): AppConfig {
     saveDirOverride:  typeof c.saveDirOverride === 'string' ? c.saveDirOverride.trim() : '',
     ttsProvider:      ['openai', 'system', 'off'].includes(c.ttsProvider) ? c.ttsProvider : 'system',
     ttsVoice:         typeof c.ttsVoice === 'string' && c.ttsVoice.length > 0 ? c.ttsVoice : 'alloy',
+    readOnlyMode:     typeof c.readOnlyMode === 'boolean' ? c.readOnlyMode : false,
+    hotkeyDing:       typeof c.hotkeyDing === 'boolean' ? c.hotkeyDing : false,
     schemaVersion:    SCHEMA_VERSION,
   };
 }

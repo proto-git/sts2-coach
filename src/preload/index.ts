@@ -10,9 +10,22 @@ contextBridge.exposeInMainWorld('api', {
   onLockChange: (cb: (locked: boolean) => void) => {
     ipcRenderer.on('overlay-lock', (_, locked) => cb(locked));
   },
+  // Patch 16: hotkey ack — main fires this the instant a hotkey lands so the
+  // overlay can flip to a "Thinking…" state and (optionally) play a ding.
+  onPending: (cb: (info: { kind: 'advise' | 'deck-dump'; ding: boolean }) => void) => {
+    ipcRenderer.on('coach-pending', (_, info) => cb(info));
+  },
+  onError: (cb: (msg: string) => void) => {
+    ipcRenderer.on('coach-error', (_, msg) => cb(msg));
+  },
   getState:   () => ipcRenderer.invoke('get-state'),
   getModel:   () => ipcRenderer.invoke('get-model'),
   getLocked:  () => ipcRenderer.invoke('overlay-get-locked'),
+  // Patch 16: read-only mode signal for the overlay badge.
+  getReadOnly: () => ipcRenderer.invoke('coach-get-read-only'),
+  onReadOnlyChange: (cb: (v: boolean) => void) => {
+    ipcRenderer.on('coach-read-only', (_, v: boolean) => cb(v));
+  },
   setLocked:  (v: boolean) => ipcRenderer.send('overlay-set-locked', v),
   hideOverlay:  () => ipcRenderer.send('hide-overlay'),
   resizeOverlay:(height: number) => ipcRenderer.send('overlay-resize', height),
