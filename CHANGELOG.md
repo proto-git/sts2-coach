@@ -6,6 +6,17 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Smarter context + prompt caching (Patch 18)**. The system prompt now
+  includes the static procedure and JSON output schema (previously sent
+  uncached on every call) and is marked with OpenRouter `cache_control:
+  ephemeral` so Anthropic models cache the ~5.6K token prefix at ~10% input
+  cost. Per-call user text dropped from ~2K to ~250 tokens. Three new
+  context blocks added: deck archetype detection (Demon Form scaling /
+  Corruption / Poison / etc.), per-act boss matchup priors, and a rolling
+  buffer of the last 2 same-context advise outputs to keep recommendations
+  consistent across rapid hotkey presses. Token usage (input/output/cache
+  read+write) is captured per call and surfaced in the overlay's Full
+  Reasoning footer for debugging cost.
 - **Shop recognition guards** so the coach stops hallucinating relic and potion
   names from icons. STS2 doesn't print names for relics/potions in the shop,
   and the save file never persists which 3 are currently offered — only the

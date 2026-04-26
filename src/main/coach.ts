@@ -9,6 +9,9 @@ import {
   sumGoldPrices,
   type ShopRelicPool,
 } from './shop';
+import { detectArchetype, formatArchetypeLine } from './archetype';
+import { bossPriorLine } from './boss-matchups';
+import { recordAdvice, recentAdviceFor, formatRecentAdviceBlock } from './advice-history';
 
 /**
  * The coach engine.
@@ -50,6 +53,11 @@ export class Coach {
 
   async advise(req: CoachRequest): Promise<Advice> {
     const start = Date.now();
+    // Patch 18: the system prompt is now LARGE (~6K tokens — header + strict
+    // procedure + JSON schema + all knowledge files) and STABLE across calls.
+    // We mark it with cache_control so Anthropic models on OpenRouter cache
+    // it and bill subsequent calls at ~10% input cost. Other providers
+    // ignore the field — safe no-op.
     const system = buildSystemPrompt();
 
     const stateBlock = req.state
@@ -74,6 +82,15 @@ export class Coach {
       : 'SAVE-FILE CONTEXT: unavailable.';
 
     const planBlockText = buildPlanBlockText(req);
+
+    // Patch 18: deck archetype + boss prior + recent-advice context.
+    // All three are tiny (1–3 lines each) and per-call, so they live in the
+    // user message rather than in the cached system prompt.
+    const archetype = req.state ? detectArchetype(req.state.deck) : null;
+    const archetypeLine = formatArchetypeLine(archetype);
+    const bossLine = bossPriorLine(req.state?.bossId);
+    const recentEntries = recentAdviceFor(req.saveContext as any, 2);
+    const recentBlock = formatRecentAdviceBlock(recentEntries);
 
     // Patch 15: shop-context guidance + per-run relic pool. Only included
     // when the save says we're on a shop screen so we don't waste tokens.
@@ -108,103 +125,50 @@ export class Coach {
       '  • If the orb is unreadable or context is not combat, fall back to the save baseline; if both are unknown, assume 3.',
     ].join('\n');
 
+    // Patch 18: per-call user message is now ONLY the dynamic state.
+    // The procedure + JSON schema live in the cached system prompt, so we
+    // don't pay to send them on every call.
     const userText = [
       'CURRENT RUN STATE (between-room truth from the save file):',
       stateBlock,
       '',
       contextHint,
       '',
+      archetypeLine,
+      bossLine,
+      '',
       planBlockText,
       shopBlockText ? '\n' + shopBlockText : '',
       '',
       energyRule,
-      req.userNote ? `\nExtra context: ${req.userNote}` : '',
       '',
-      '=== PROCEDURE — STRICT ORDER ===',
-      '',
-      'STEP 1 — LOCK THE CONTEXT.',
-      '  Look at the screenshot and decide, in this priority order, what screen is ACTIVELY IN FOCUS right now:',
-      '    • combat       — enemies visible with HP bars, a hand of cards along the bottom, an energy orb.',
-      '    • card_reward  — "Choose a card" header with 3 (sometimes fewer) cards offered, plus a Skip button.',
-      '    • relic_reward — single relic shown with "Take" / "Skip".',
-      '    • boss_reward  — three rare relics offered after a boss fight.',
-      '    • shop         — Merchant screen with cards, relics, potions, and a card-remove service, all priced in gold.',
-      '    • event        — narrative text with lettered / numbered choices (A/B/C).',
-      '    • rest_site    — campfire screen with Rest / Smith / other options.',
-      '    • map          — top-down act map showing nodes connected by dashed lines. Current node has a RED arrow / highlighted ring. Legend panel on the right.',
-      '',
-      '  The screenshot may contain LEFTOVER text from a prior screen (e.g. a small popup from a just-resolved event), or the OVERLAY from this app. IGNORE THE OVERLAY. IGNORE ANY PRIOR-SCREEN POPUPS. Only the primary game screen counts.',
-      '',
-      '  Write seen.context as exactly one of: combat | card_reward | relic_reward | boss_reward | shop | event | rest_site | map | unknown.',
-      '',
-      'STEP 2 — ENUMERATE WHAT\'S ACTUALLY ON THE PRIMARY SCREEN.',
-      '  Fill in the "seen" block. Only list things you can literally point to on the CURRENT screen.',
-      '  If seen.context === "map": seen.hand = [], seen.enemies = [], seen.offered = [], and energy = null. The map is not a combat screen.',
-      '  If seen.context === "combat": list EVERY card visible in the player\'s hand, left-to-right, with + for upgrades; read the energy orb as "current/max".',
-      '  If seen.context is a *_reward or shop: list the offered items verbatim.',
-      '',
-      'STEP 3 — ADVISE FOR THAT CONTEXT ONLY.',
-      '  Discard anything you would have said for a different screen. Common failure modes to AVOID:',
-      '    • Recommending "Take X" on a map screen (that\'s a card_reward answer).',
-      '    • Recommending "Go to the merchant" on a card_reward screen (that\'s a map answer).',
-      '    • Recommending a card the player doesn\'t have in hand.',
-      '    • Recommending a 4-energy play when maxEnergy is 3 — honor the ENERGY CAP above.',
-      '',
-      '  Context-specific rules:',
-      '    - combat:       pick should start with a verb ("Play X, then Y, ..."). Your combined energy cost across the turn MUST be ≤ the energy cap. List the exact card names in play order.',
-      '    - card_reward:  pick is one of the 3 offered cards OR "Skip". Nothing else.',
-      '    - relic_reward: pick is "Take" or "Skip".',
-      '    - boss_reward:  pick is one of the 3 offered boss relics OR "Skip".',
-      '    - shop:         pick names a specific listed item + action ("Buy X for $Y" or "Remove a card for $Y" or "Skip").',
-      '    - event:        pick is one of the lettered/numbered choices as worded on screen.',
-      '    - rest_site:    pick is Rest / Smith / <other visible option>.',
-      '    - map:          pick MUST be exactly one of the next-choice nodes listed in the MAP PLAN block. Use shorthand like "Go to the shop (col 4, row 8)" or "Go to the rest site (col 2, row 9)". Do NOT say "take a card" on a map screen.',
-      '',
-      'STEP 4 — SANITY CHECK YOUR OWN PICK.',
-      '  Re-read your pick. Does it make sense for seen.context? If not, rewrite it.',
-      '',
-      'Return ONLY this JSON, no prose around it:',
-      '{',
-      '  "seen": {',
-      '    "context": "combat|card_reward|relic_reward|boss_reward|shop|event|rest_site|map|unknown",',
-      '    "context_evidence": "one short phrase describing what on the screenshot convinced you of the context",',
-      '    "hand": ["exact card names visible in hand, with + for upgrades; [] if not in combat"],',
-      '    "energy": "x/y or null",',
-      '    "enemies": [{"name": "...", "hp": "cur/max", "intent": "attack 8 / block / buff / unknown"}],',
-      '    // Friendly summons / allies on YOUR side of the board (left). Empty array if none.',
-      '    // Examples: Necrobinder\'s Osty (skeletal hand), Regent\'s Sovereign Blade token.',
-      '    // A unit is friendly if it has NO intent indicator above its portrait.',
-      '    "allies": [{"name": "...", "hp": "cur/max"}],',
-      '    "offered": ["for card/relic rewards or shop: the offered items as shown"],',
-      '    "hp_visible": "cur/max as shown on screen",',
-      '    "other_notes": "anything else materially relevant (artifact stacks, buffs, debuffs, gold, potions visible, etc.)"',
-      '  },',
-      '  "plan_cards": [',
-      '    // ONLY when seen.context === "combat". List each card you plan to play this turn in order.',
-      '    // Each entry: { name, cost, target?, energy_gain? }',
-      '    //   cost         = printed cost on the card (integer; X-cost cards: put planned X value).',
-      '    //   energy_gain  = energy the card itself RETURNS on play (0 unless the card says so).',
-      '    //                  Examples: Seek the Source cost 0 gain 1, Through Violence cost 0 gain 0,',
-      '    //                  Bloodletting cost 0 gain 2, most cards gain 0.',
-      '    // Example: [{"name":"Bash","cost":2,"target":"Jaw Worm"},{"name":"Seek the Source","cost":0,"energy_gain":1},{"name":"Strike+","cost":1,"target":"Jaw Worm"}]',
-      '    // TARGETING RULE: For ATTACK cards, the `target` MUST be a name from seen.enemies.',
-      '    // It is NEVER allowed to be the player or any name in seen.allies. Buff/heal cards may target an ally.',
-      '    // Leave [] for any non-combat context.',
-      '  ],',
-      '  "pick": "terse primary recommendation, phrased for the LOCKED context",',
-      '  "reasoning": "one short sentence",',
-      '  "runner_up": "alternative that is ALSO valid for this same context",',
-      '  "long_form": "2–4 sentences of deeper reasoning",',
-      '  "confidence": "high|medium|low — lower it when the screenshot is ambiguous or text is unreadable"',
-      '}',
+      recentBlock,
+      req.userNote ? `\nExtra context from user: ${req.userNote}` : '',
     ].filter(Boolean).join('\n');
 
     logger.debug('Coach request', { model: this.model, hasState: !!req.state });
 
+    // Patch 18: cache_control on the (large, stable) system prompt and
+    // the (large, stable) user-text procedure leftover. OpenRouter passes
+    // this through to Anthropic models for prompt caching. Non-Anthropic
+    // providers silently drop the unknown field.
+    //
+    // We use the OpenAI SDK with `as any` because the SDK's strict types
+    // don't yet include cache_control on content parts. The wire format
+    // is what matters — OpenRouter accepts it.
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages: [
-        { role: 'system', content: system },
+        {
+          role: 'system',
+          content: [
+            {
+              type: 'text',
+              text: system,
+              cache_control: { type: 'ephemeral' },
+            } as any,
+          ] as any,
+        },
         {
           role: 'user',
           content: [
@@ -218,11 +182,17 @@ export class Coach {
       ],
       max_tokens: 1200,
       temperature: 0.2,
+      // Tell OpenRouter we want usage details back (tokens + cache).
+      ...({ usage: { include: true } } as any),
     });
 
     const text = response.choices[0]?.message?.content ?? '';
     const parsed = extractJson(text);
     const latencyMs = Date.now() - start;
+
+    // Patch 18: extract usage. OpenRouter shapes vary by provider; we read
+    // both the standard OpenAI fields and Anthropic's cache extensions.
+    const usage = extractUsage(response);
 
     // Post-hoc checks: we don't block — we annotate so you can see it on the overlay.
     const seen = parsed.seen ?? {};
@@ -401,21 +371,53 @@ export class Coach {
       pick:        finalPick,
       reasoning:   parsed.reasoning ?? text.slice(0, 200),
       runnerUp:    parsed.runner_up ?? parsed.runnerUp ?? undefined,
-      longForm:    buildLongForm(parsed, warnings, req.planBlock, planCards, energyCap, truncatedPick),
+      longForm:    buildLongForm(parsed, warnings, req.planBlock, planCards, energyCap, truncatedPick, archetype, usage),
       contextGuess: seen.context ?? parsed.context ?? 'unknown',
       model:       this.model,
       latencyMs,
       createdAt:   new Date().toISOString(),
       mapAscii:    req.planBlock?.asciiOverlay ?? req.planBlock?.ascii,
       planSummary: req.planBlock?.summary,
+      usage,
     };
 
+    // Patch 18: roll into recent-advice buffer for next call's prompt.
+    recordAdvice(advice);
+
+    const cacheTag = usage?.cachedReadTokens
+      ? ` cache_read=${usage.cachedReadTokens}`
+      : (usage?.cachedWriteTokens ? ` cache_write=${usage.cachedWriteTokens}` : '');
     logger.info(
-      `Advice (${latencyMs}ms) [${advice.contextGuess}]: ${advice.pick}` +
+      `Advice (${latencyMs}ms) [${advice.contextGuess}]${cacheTag}: ${advice.pick}` +
       (warnings.length ? ` ⚠ ${warnings.join(' | ')}` : ''),
     );
     return advice;
   }
+}
+
+/**
+ * Patch 18: extract usage from an OpenAI/OpenRouter chat completion response.
+ * Handles both the standard `prompt_tokens`/`completion_tokens` shape and
+ * Anthropic's cache extensions (`cache_creation_input_tokens`,
+ * `cache_read_input_tokens`).
+ */
+function extractUsage(response: any): Advice['usage'] | undefined {
+  const u = response?.usage;
+  if (!u || typeof u !== 'object') return undefined;
+  const out: NonNullable<Advice['usage']> = {};
+  if (typeof u.prompt_tokens === 'number') out.inputTokens = u.prompt_tokens;
+  if (typeof u.completion_tokens === 'number') out.outputTokens = u.completion_tokens;
+  // Anthropic-via-OpenRouter exposes these on the usage object; OpenRouter
+  // also surfaces them under prompt_tokens_details on some providers.
+  const cacheRead =
+    u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? null;
+  const cacheWrite = u.cache_creation_input_tokens ?? null;
+  if (typeof cacheRead === 'number') out.cachedReadTokens = cacheRead;
+  if (typeof cacheWrite === 'number') out.cachedWriteTokens = cacheWrite;
+  // OpenRouter sometimes returns total cost under cost or usage.cost (USD).
+  const cost = response?.cost ?? u.cost ?? null;
+  if (typeof cost === 'number') out.costUsd = cost;
+  return Object.keys(out).length ? out : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -606,6 +608,8 @@ function buildLongForm(
   planCards: Array<{ name: string; cost: number; target?: string }>,
   energyCap: number | null,
   truncatedPick: string | null,
+  archetype: { label: string; description: string } | null,
+  usage: Advice['usage'] | undefined,
 ): string | undefined {
   const lf = parsed.long_form ?? parsed.longForm;
   const seen = parsed.seen;
@@ -655,6 +659,16 @@ function buildLongForm(
   }
   if (seen?.context_evidence) parts.push(`Context evidence: ${seen.context_evidence}`);
   if (parsed.confidence) parts.push(`Confidence: ${parsed.confidence}`);
+  if (archetype) parts.push(`Archetype read: ${archetype.label}`);
+  if (usage && (usage.inputTokens || usage.cachedReadTokens)) {
+    const cacheBits: string[] = [];
+    if (usage.cachedReadTokens) cacheBits.push(`${usage.cachedReadTokens} cache hit`);
+    if (usage.cachedWriteTokens) cacheBits.push(`${usage.cachedWriteTokens} cache write`);
+    const cacheStr = cacheBits.length ? ` (${cacheBits.join(', ')})` : '';
+    parts.push(
+      `Tokens: in ${usage.inputTokens ?? '?'}, out ${usage.outputTokens ?? '?'}${cacheStr}`,
+    );
+  }
   return parts.length ? parts.join('\n\n') : undefined;
 }
 

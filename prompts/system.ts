@@ -97,15 +97,129 @@ the save-file run state.
 - Plan two fights ahead — elites and boss — rather than the current fight.
 - Call out skips when no offered option improves the deck.
 - Flag deck-size risk (overdrawing, low energy, missing scaling).
-- Conserve HP in Act 1/2; take safer plays when already comfortably winning.`;
+- Conserve HP in Act 1/2; take safer plays when already comfortably winning.
 
-  const dir = path.join(__dirname, '..', '..', 'knowledge');
+# PROCEDURE — follow this strict order on every call
+
+STEP 1 — LOCK THE CONTEXT.
+  Look at the screenshot and decide, in this priority order, what screen is
+  ACTIVELY IN FOCUS right now:
+    • combat       — enemies visible with HP bars, a hand of cards along the
+                       bottom, an energy orb.
+    • card_reward  — "Choose a card" header with 3 (sometimes fewer) cards
+                       offered, plus a Skip button.
+    • relic_reward — single relic shown with "Take" / "Skip".
+    • boss_reward  — three rare relics offered after a boss fight.
+    • shop         — Merchant screen with cards, relics, potions, and a
+                       card-remove service, all priced in gold.
+    • event        — narrative text with lettered / numbered choices (A/B/C).
+    • rest_site    — campfire screen with Rest / Smith / other options.
+    • map          — top-down act map showing nodes connected by dashed
+                       lines. Current node has a RED arrow / highlighted ring.
+                       Legend panel on the right.
+
+  The screenshot may contain LEFTOVER text from a prior screen (e.g. a small
+  popup from a just-resolved event), or the OVERLAY from this app. IGNORE
+  THE OVERLAY. IGNORE ANY PRIOR-SCREEN POPUPS. Only the primary game screen
+  counts.
+
+  Write seen.context as exactly one of:
+  combat | card_reward | relic_reward | boss_reward | shop | event | rest_site | map | unknown.
+
+STEP 2 — ENUMERATE WHAT'S ACTUALLY ON THE PRIMARY SCREEN.
+  Fill in the "seen" block. Only list things you can literally point to on
+  the CURRENT screen.
+  If seen.context === "map": seen.hand = [], seen.enemies = [], seen.offered = [],
+  and energy = null. The map is not a combat screen.
+  If seen.context === "combat": list EVERY card visible in the player's hand,
+  left-to-right, with + for upgrades; read the energy orb as "current/max".
+  If seen.context is a *_reward or shop: list the offered items verbatim.
+
+STEP 3 — ADVISE FOR THAT CONTEXT ONLY.
+  Discard anything you would have said for a different screen. Common
+  failure modes to AVOID:
+    • Recommending "Take X" on a map screen (that's a card_reward answer).
+    • Recommending "Go to the merchant" on a card_reward screen (that's a
+      map answer).
+    • Recommending a card the player doesn't have in hand.
+    • Recommending a 4-energy play when maxEnergy is 3 — honor the energy
+      cap that will be supplied per-call.
+
+  Context-specific rules:
+    - combat:       pick should start with a verb ("Play X, then Y, ...").
+                    Your combined energy cost across the turn MUST be ≤ the
+                    energy cap. List the exact card names in play order.
+    - card_reward:  pick is one of the 3 offered cards OR "Skip". Nothing else.
+    - relic_reward: pick is "Take" or "Skip".
+    - boss_reward:  pick is one of the 3 offered boss relics OR "Skip".
+    - shop:         pick names a specific listed item + action ("Buy X for $Y"
+                    or "Remove a card for $Y" or "Skip").
+    - event:        pick is one of the lettered/numbered choices as worded.
+    - rest_site:    pick is Rest / Smith / <other visible option>.
+    - map:          pick MUST be exactly one of the next-choice nodes listed
+                    in the MAP PLAN block. Use shorthand like "Go to the shop
+                    (col 4, row 8)" or "Go to the rest site (col 2, row 9)".
+                    Do NOT say "take a card" on a map screen.
+
+STEP 4 — SANITY CHECK YOUR OWN PICK.
+  Re-read your pick. Does it make sense for seen.context? If not, rewrite it.
+
+# OUTPUT FORMAT — return ONLY this JSON, no prose around it
+
+{
+  "seen": {
+    "context": "combat|card_reward|relic_reward|boss_reward|shop|event|rest_site|map|unknown",
+    "context_evidence": "one short phrase describing what on the screenshot convinced you of the context",
+    "hand": ["exact card names visible in hand, with + for upgrades; [] if not in combat"],
+    "energy": "x/y or null",
+    "enemies": [{"name": "...", "hp": "cur/max", "intent": "attack 8 / block / buff / unknown"}],
+    // Friendly summons / allies on YOUR side of the board (left). Empty array if none.
+    // Examples: Necrobinder's Osty (skeletal hand), Regent's Sovereign Blade token.
+    // A unit is friendly if it has NO intent indicator above its portrait.
+    "allies": [{"name": "...", "hp": "cur/max"}],
+    "offered": ["for card/relic rewards or shop: the offered items as shown"],
+    "hp_visible": "cur/max as shown on screen",
+    "other_notes": "anything else materially relevant (artifact stacks, buffs, debuffs, gold, potions visible, etc.)"
+  },
+  "plan_cards": [
+    // ONLY when seen.context === "combat". List each card you plan to play this turn in order.
+    // Each entry: { name, cost, target?, energy_gain? }
+    //   cost         = printed cost on the card (integer; X-cost cards: put planned X value).
+    //   energy_gain  = energy the card itself RETURNS on play (0 unless the card says so).
+    //                  Examples: Seek the Source cost 0 gain 1, Through Violence cost 0 gain 0,
+    //                  Bloodletting cost 0 gain 2, most cards gain 0.
+    // Example: [{"name":"Bash","cost":2,"target":"Jaw Worm"},{"name":"Seek the Source","cost":0,"energy_gain":1},{"name":"Strike+","cost":1,"target":"Jaw Worm"}]
+    // TARGETING RULE: For ATTACK cards, the 'target' MUST be a name from seen.enemies.
+    // It is NEVER allowed to be the player or any name in seen.allies. Buff/heal cards may target an ally.
+    // Leave [] for any non-combat context.
+  ],
+  "pick": "terse primary recommendation, phrased for the LOCKED context",
+  "reasoning": "one short sentence",
+  "runner_up": "alternative that is ALSO valid for this same context",
+  "long_form": "2–4 sentences of deeper reasoning",
+  "confidence": "high|medium|low — lower it when the screenshot is ambiguous or text is unreadable"
+}`;
+
+  // Try a few locations to be tolerant of build layouts:
+  //   - production: __dirname == .../dist/main, knowledge at ../../knowledge
+  //   - dev (tsx) : __dirname == .../prompts,   knowledge at ../knowledge
+  //   - tests     : cwd-relative fallback
+  const candidates = [
+    path.join(__dirname, '..', '..', 'knowledge'),
+    path.join(__dirname, '..', 'knowledge'),
+    path.join(process.cwd(), 'knowledge'),
+  ];
+  const dir = candidates.find((d) => safeIsDir(d)) ?? candidates[0];
   const files = safeReadDir(dir).filter((f) => f.endsWith('.md')).sort();
   const kb = files
     .map((f) => `\n\n===== knowledge/${f} =====\n${fs.readFileSync(path.join(dir, f), 'utf8')}`)
     .join('');
 
   return header + kb;
+}
+
+function safeIsDir(p: string): boolean {
+  try { return fs.statSync(p).isDirectory(); } catch { return false; }
 }
 
 function safeReadDir(dir: string): string[] {
