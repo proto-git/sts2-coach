@@ -6,6 +6,17 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Shop recognition guards** so the coach stops hallucinating relic and potion
+  names from icons. STS2 doesn't print names for relics/potions in the shop,
+  and the save file never persists which 3 are currently offered — only the
+  per-run eligible relic pool. The coach now (a) feeds that pool to the model
+  as "the icon must be one of these N relics", (b) hard-rules the prompt to
+  describe shop relics/potions by slot + price + icon color instead of naming
+  them, and (c) post-hoc rewrites picks that named a specific relic/potion
+  into a verify-on-screen instruction. New `knowledge/30-shop.md` documents
+  shop layout, slot vocabulary, and shop priors.
+- Affordability check on shop picks: parses `$NNg` tokens out of the
+  recommendation, sums them, and warns if the total exceeds current gold.
 - **Settings window** for in-app configuration of API keys, model choice, TTS
   provider/voice, and save-folder override. No more editing `.env` files just to
   rotate a key. Opened from the tray menu (Settings…) and auto-popped on first

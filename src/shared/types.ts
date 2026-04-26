@@ -74,6 +74,13 @@ export interface CoachRequest {
   userNote?: string;         // optional extra context typed by user
   /** Save-derived context (Patch 06): tells the coach what the save thinks we're doing. */
   saveContext?: 'map' | 'combat' | 'event' | 'shop' | 'rest' | 'unknown';
+  /** Optional shop block (Patch 15). Included when saveContext === 'shop'. */
+  shopBlock?: {
+    /** Eligible relic IDs for this run's shops, e.g. ["RELIC.LAVA_LAMP", ...]. */
+    eligibleRelicNames: string[];
+    /** Player's current gold (mirror of state.gold for guard convenience). */
+    gold: number | null;
+  };
   /** Optional current plan block — provided when saveContext === 'map'. */
   planBlock?: {
     summary: string;

@@ -15,6 +15,7 @@ import { logger } from '@shared/logger';
 import type { Advice, GameState } from '@shared/types';
 import { planOnState, type PlanDecision } from './planner';
 import { computeViewport, extractMap, inferSaveContext, renderAscii } from './map';
+import { extractShopRelicPool } from './shop';
 import { MODEL_OPTIONS } from '@shared/models';
 import {
   configFilePath,
@@ -106,12 +107,26 @@ async function doAdvise() {
       };
     }
 
+    // Patch 15: shop-context block — STS2 doesn't persist current shop
+    // offerings to the save, but it does keep a per-run eligible relic pool.
+    // Pass that + authoritative gold so the model knows the icon must be one
+    // of these N relics, and so we can affordability-check post-hoc.
+    let shopBlock: Parameters<typeof coach.advise>[0]['shopBlock'] | undefined;
+    if (saveContext === 'shop' && lastState?.raw) {
+      const pool = extractShopRelicPool(lastState.raw);
+      shopBlock = {
+        eligibleRelicNames: pool?.displayNames ?? [],
+        gold: lastState.gold ?? null,
+      };
+    }
+
     const advice = await coach.advise({
       screenshotB64: shot.b64,
       mimeType: shot.mimeType,
       state: lastState,
       saveContext,
       planBlock,
+      shopBlock,
     });
     overlayWin()?.webContents.send('advice', advice);
     overlayWin()?.show();

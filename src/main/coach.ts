@@ -2,6 +2,13 @@ import OpenAI from 'openai';
 import type { Advice, CoachRequest } from '@shared/types';
 import { buildSystemPrompt } from '../../prompts/system';
 import { logger } from '@shared/logger';
+import {
+  detectShopNamedItem,
+  formatShopPoolForPrompt,
+  shopAdvisoryBlock,
+  sumGoldPrices,
+  type ShopRelicPool,
+} from './shop';
 
 /**
  * The coach engine.
@@ -67,6 +74,22 @@ export class Coach {
       : 'SAVE-FILE CONTEXT: unavailable.';
 
     const planBlockText = buildPlanBlockText(req);
+
+    // Patch 15: shop-context guidance + per-run relic pool. Only included
+    // when the save says we're on a shop screen so we don't waste tokens.
+    const shopBlockText = req.saveContext === 'shop'
+      ? [
+          shopAdvisoryBlock(),
+          req.shopBlock?.eligibleRelicNames?.length
+            ? formatShopPoolForPrompt({
+                ids: [],
+                displayNames: req.shopBlock.eligibleRelicNames,
+                source: '(passed in)',
+              } satisfies ShopRelicPool)
+            : '',
+          req.shopBlock?.gold != null ? `Player gold (authoritative): ${req.shopBlock.gold}` : '',
+        ].filter(Boolean).join('\n\n')
+      : '';
     const savedMaxEnergy = req.state?.maxEnergy ?? null;
     const energyRule = [
       'ENERGY (read carefully):',
@@ -92,6 +115,7 @@ export class Coach {
       contextHint,
       '',
       planBlockText,
+      shopBlockText ? '\n' + shopBlockText : '',
       '',
       energyRule,
       req.userNote ? `\nExtra context: ${req.userNote}` : '',
@@ -335,7 +359,43 @@ export class Coach {
       }
     }
 
-    const finalPick = friendlyOverridePick ?? truncatedPick ?? (parsed.pick ?? 'Unable to parse recommendation.');
+    // 6) Shop guards (Patch 15).
+    //    a) Recognition: in a shop, the model must NOT name a relic/potion.
+    //       If it does, append a warning and rewrite the pick to slot/price
+    //       phrasing.
+    //    b) Affordability: sum every Ng in the pick — it must fit in the
+    //       player's gold. If not, warn loudly.
+    let shopOverridePick: string | null = null;
+    if (seen.context === 'shop') {
+      const named = detectShopNamedItem(pickText);
+      if (named.length > 0) {
+        const namesList = [...new Set(named.map((n) => `${n.name} (${n.kind})`))].join(', ');
+        warnings.push(
+          `Shop recognition error: pick named ${namesList}. ` +
+          `Relic/potion icons are unreadable — use slot+price+color instead.`,
+        );
+        logger.warn(`Shop named-item violation: ${namesList} in pick "${pickText.slice(0, 80)}"`);
+        shopOverridePick =
+          'Verify on screen: hover the icon to confirm. The model named a specific ' +
+          `${named[0].kind} from its art (${named[0].name}), which is unreliable. ` +
+          'Use slot + price to identify, or skip.';
+      }
+
+      const gold = req.shopBlock?.gold ?? req.state?.gold ?? null;
+      const sumPrice = sumGoldPrices(pickText);
+      if (sumPrice != null && gold != null && sumPrice > gold) {
+        warnings.push(
+          `Affordability: pick totals ${sumPrice}g but you only have ${gold}g. ` +
+          `Drop the most expensive item or skip.`,
+        );
+        logger.warn(`Shop affordability violation: ${sumPrice}g > ${gold}g`);
+        // Don't override the pick text — the warning is enough; the user
+        // can read it on the overlay and decide. Overriding would lose the
+        // model's reasoning entirely.
+      }
+    }
+
+    const finalPick = shopOverridePick ?? friendlyOverridePick ?? truncatedPick ?? (parsed.pick ?? 'Unable to parse recommendation.');
 
     const advice: Advice = {
       pick:        finalPick,
