@@ -399,6 +399,7 @@ app.on('ready', async () => {
     hideOverlay:      () => overlayWin()?.hide(),
     moveOverlayToZone: (z) => overlay?.moveToZone(z),
     resetOverlay:     () => overlay?.resetPosition(),
+    bringOverlayToCursor: () => overlay?.bringToCursor(),
     setOverlayOpacity: (v) => overlay?.setOpacity(v),
     setOverlayClickThrough: (v) => overlay?.setClickThrough(v),
     getOverlaySettings: () => overlay!.getSettings(),

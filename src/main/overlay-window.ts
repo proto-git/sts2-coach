@@ -9,6 +9,14 @@ import {
 import { logger } from '@shared/logger';
 
 const MARGIN = 20;
+// Keep at least this many pixels of the overlay on-screen so it can never
+// be dragged fully off the visible desktop.
+const MIN_VISIBLE = 24;
+// 'floating' keeps the window above normal app windows but stops macOS from
+// dragging it along when another app is moved between displays. 'screen-saver'
+// caused the overlay to follow whichever window was being moved across
+// monitors and then become trapped on the new display.
+const ALWAYS_ON_TOP_LEVEL = 'floating' as const;
 
 export interface OverlayHandle {
   win: BrowserWindow;
@@ -17,6 +25,7 @@ export interface OverlayHandle {
   setOpacity: (v: number) => void;
   setClickThrough: (v: boolean) => void;
   getSettings: () => OverlaySettings;
+  bringToCursor: () => void;
 }
 
 export function createOverlayWindow(): OverlayHandle {
@@ -46,7 +55,7 @@ export function createOverlayWindow(): OverlayHandle {
   win.setOpacity(settings.opacity);
   win.setIgnoreMouseEvents(settings.clickThrough, { forward: true });
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setAlwaysOnTop(true, ALWAYS_ON_TOP_LEVEL);
 
   // Renderer is built as multi-entry under dist/renderer/{overlay,settings}/.
   // Dev: ELECTRON_RENDERER_URL is the Vite dev-server root, so we append the entry path.
@@ -81,10 +90,13 @@ export function createOverlayWindow(): OverlayHandle {
   ipcMain.on('overlay-drag', (_e, dx: number, dy: number) => {
     if (win.isDestroyed()) return;
     const [x0, y0] = win.getPosition();
+    const [w, h] = win.getSize();
     const nx = x0 + Math.round(dx);
     const ny = y0 + Math.round(dy);
-    const disp = screen.getDisplayNearestPoint({ x: nx, y: ny });
-    const clamped = clampToDisplay(nx, ny, win.getSize()[0], win.getSize()[1], disp);
+    // Clamp against the union of ALL displays so the user can drag freely
+    // between monitors. We only enforce that a small sliver stays visible
+    // somewhere on the desktop so the window can't be lost entirely.
+    const clamped = clampToAnyDisplay(nx, ny, w, h);
     win.setPosition(clamped.x, clamped.y);
   });
 
@@ -126,7 +138,49 @@ export function createOverlayWindow(): OverlayHandle {
     saveOverlaySettings({ clickThrough: v });
   }
 
-  return { win, moveToZone, resetPosition, setOpacity, setClickThrough, getSettings: loadOverlaySettings };
+  // Emergency rescue: snap the overlay to whichever display the cursor is on.
+  // Useful if a monitor is unplugged or the window somehow ends up off-screen.
+  function bringToCursor() {
+    if (win.isDestroyed()) return;
+    const cursor = screen.getCursorScreenPoint();
+    const disp = screen.getDisplayNearestPoint(cursor);
+    const [w, h] = win.getSize();
+    const wa = disp.workArea;
+    const x = wa.x + Math.max(MARGIN, Math.round((wa.width - w) / 2));
+    const y = wa.y + Math.max(MARGIN, Math.round((wa.height - h) / 2));
+    win.setPosition(x, y);
+    saveOverlaySettings({
+      x: x - wa.x,
+      y: y - wa.y,
+      displayId: disp.id,
+      snapZone: null,
+    });
+    logger.debug('overlay brought to cursor', { x, y, display: disp.id });
+  }
+
+  // Re-anchor if the display layout changes and the overlay would be stranded
+  // off-screen (e.g. monitor unplugged, resolution swap, dock/undock).
+  function reanchorIfStranded() {
+    if (win.isDestroyed()) return;
+    const [x, y] = win.getPosition();
+    const [w, h] = win.getSize();
+    const rect = { x, y, width: w, height: h };
+    const visible = screen.getAllDisplays().some((d) => rectIntersects(rect, d.workArea));
+    if (!visible) {
+      logger.warn('overlay stranded after display change, re-anchoring');
+      bringToCursor();
+    }
+  }
+  screen.on('display-added', reanchorIfStranded);
+  screen.on('display-removed', reanchorIfStranded);
+  screen.on('display-metrics-changed', reanchorIfStranded);
+  win.on('closed', () => {
+    screen.removeListener('display-added', reanchorIfStranded);
+    screen.removeListener('display-removed', reanchorIfStranded);
+    screen.removeListener('display-metrics-changed', reanchorIfStranded);
+  });
+
+  return { win, moveToZone, resetPosition, setOpacity, setClickThrough, getSettings: loadOverlaySettings, bringToCursor };
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -178,4 +232,44 @@ function clampToDisplay(x: number, y: number, w: number, h: number, disp: Displa
     x: Math.max(minX, Math.min(maxX, x)),
     y: Math.max(minY, Math.min(maxY, y)),
   };
+}
+
+// Clamp against the bounding box of ALL displays. This lets the user drag
+// the overlay across monitor boundaries (including the gaps between displays
+// of different sizes) while still preventing it from being dragged fully
+// off-screen. We require at least MIN_VISIBLE pixels to remain inside the
+// union rect so the window is always reachable for another drag.
+function clampToAnyDisplay(x: number, y: number, w: number, h: number) {
+  const displays = screen.getAllDisplays();
+  if (displays.length === 0) return { x, y };
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const d of displays) {
+    const wa = d.workArea;
+    if (wa.x < minX) minX = wa.x;
+    if (wa.y < minY) minY = wa.y;
+    if (wa.x + wa.width > maxX) maxX = wa.x + wa.width;
+    if (wa.y + wa.height > maxY) maxY = wa.y + wa.height;
+  }
+  // Allow the window to extend past edges as long as MIN_VISIBLE pixels
+  // remain inside the union rect on each axis.
+  const lowX = minX - (w - MIN_VISIBLE);
+  const highX = maxX - MIN_VISIBLE;
+  const lowY = minY - (h - MIN_VISIBLE);
+  const highY = maxY - MIN_VISIBLE;
+  return {
+    x: Math.max(lowX, Math.min(highX, x)),
+    y: Math.max(lowY, Math.min(highY, y)),
+  };
+}
+
+function rectIntersects(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
 }

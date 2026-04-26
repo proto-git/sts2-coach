@@ -12,6 +12,8 @@ interface TrayDeps {
   hideOverlay: () => void;
   moveOverlayToZone: (zone: SnapZone) => void;
   resetOverlay: () => void;
+  /** Emergency rescue: snap overlay to display under the cursor. */
+  bringOverlayToCursor: () => void;
   setOverlayOpacity: (v: number) => void;
   setOverlayClickThrough: (v: boolean) => void;
   getOverlaySettings: () => OverlaySettings;
@@ -90,6 +92,7 @@ export function createTray(deps: TrayDeps): Tray {
             click: () => { deps.moveOverlayToZone(z.zone); rebuild(); },
           })),
           { type: 'separator' as const },
+          { label: 'Bring to cursor', click: () => deps.bringOverlayToCursor() },
           { label: 'Reset to Bottom Right', click: () => { deps.resetOverlay(); rebuild(); } },
         ],
       },
