@@ -9,102 +9,168 @@
 <body>
   <main class="container">
     <header>
-      <h1>Settings</h1>
+      <h1>STS2 Coach</h1>
       <p class="subtitle" id="subtitle">Configure your API keys, model, and save file location.</p>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="settings"    role="tab" type="button">Settings</button>
+        <button class="tab"        data-tab="diagnostics" role="tab" type="button">Diagnostics</button>
+      </nav>
     </header>
 
-    <section class="card">
-      <h2>API Keys</h2>
+    <!-- ============================== SETTINGS TAB ============================== -->
+    <section class="tab-panel active" data-panel="settings">
 
-      <label class="field">
-        <span class="label-row">
-          <span class="label">OpenRouter API key <span class="required">*</span></span>
-          <span class="hint">Required \u2014 powers the coach's advice.</span>
-        </span>
-        <div class="input-row">
-          <input id="openrouterKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-..." />
-          <button class="ghost reveal" data-target="openrouterKey" type="button" title="Show/hide">\u{1F441}</button>
-        </div>
-        <a class="link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key \u2192</a>
-      </label>
+      <section class="card">
+        <h2>API Keys</h2>
 
-      <label class="field">
-        <span class="label-row">
-          <span class="label">OpenAI API key</span>
-          <span class="hint">Optional \u2014 enables HD voice. Falls back to system TTS.</span>
-        </span>
-        <div class="input-row">
-          <input id="openaiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..." />
-          <button class="ghost reveal" data-target="openaiKey" type="button" title="Show/hide">\u{1F441}</button>
-        </div>
-        <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get a key \u2192</a>
-      </label>
+        <label class="field">
+          <span class="label-row">
+            <span class="label">OpenRouter API key <span class="required">*</span></span>
+            <span class="hint">Required \u2014 powers the coach's advice.</span>
+          </span>
+          <div class="input-row">
+            <input id="openrouterKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-..." />
+            <button class="ghost reveal" data-target="openrouterKey" type="button" title="Show/hide">\u{1F441}</button>
+          </div>
+          <a class="link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key \u2192</a>
+        </label>
+
+        <label class="field">
+          <span class="label-row">
+            <span class="label">OpenAI API key</span>
+            <span class="hint">Optional \u2014 enables HD voice. Falls back to system TTS.</span>
+          </span>
+          <div class="input-row">
+            <input id="openaiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..." />
+            <button class="ghost reveal" data-target="openaiKey" type="button" title="Show/hide">\u{1F441}</button>
+          </div>
+          <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get a key \u2192</a>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2>Model</h2>
+        <label class="field">
+          <span class="label-row">
+            <span class="label">Default model</span>
+            <span class="hint">Switchable per-session from the tray icon.</span>
+          </span>
+          <select id="model"></select>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2>Voice</h2>
+        <label class="field">
+          <span class="label-row">
+            <span class="label">TTS provider</span>
+            <span class="hint">"System" uses your OS's built-in voice.</span>
+          </span>
+          <select id="ttsProvider">
+            <option value="system">System (free, OS native)</option>
+            <option value="openai">OpenAI HD (uses OpenAI key)</option>
+            <option value="off">Off (overlay only, no voice)</option>
+          </select>
+        </label>
+
+        <label class="field" id="ttsVoiceField">
+          <span class="label-row">
+            <span class="label">OpenAI voice</span>
+            <span class="hint">Only used with the OpenAI provider.</span>
+          </span>
+          <select id="ttsVoice">
+            <option value="alloy">Alloy</option>
+            <option value="ash">Ash</option>
+            <option value="ballad">Ballad</option>
+            <option value="coral">Coral</option>
+            <option value="echo">Echo</option>
+            <option value="fable">Fable</option>
+            <option value="nova">Nova</option>
+            <option value="onyx">Onyx</option>
+            <option value="sage">Sage</option>
+            <option value="shimmer">Shimmer</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2>Save file location</h2>
+        <label class="field">
+          <span class="label-row">
+            <span class="label">Slay the Spire 2 save folder</span>
+            <span class="hint">Leave blank to auto-detect.</span>
+          </span>
+          <div class="input-row">
+            <input id="saveDir" type="text" autocomplete="off" spellcheck="false" placeholder="(auto-detect)" />
+            <button class="ghost" id="browseBtn" type="button">Browse\u2026</button>
+          </div>
+          <div class="row">
+            <button class="ghost small" id="detectBtn" type="button">Auto-detect</button>
+            <span class="status" id="saveDirStatus"></span>
+          </div>
+        </label>
+      </section>
     </section>
 
-    <section class="card">
-      <h2>Model</h2>
-      <label class="field">
-        <span class="label-row">
-          <span class="label">Default model</span>
-          <span class="hint">Switchable per-session from the tray icon.</span>
-        </span>
-        <select id="model"></select>
-      </label>
-    </section>
+    <!-- ============================== DIAGNOSTICS TAB ============================ -->
+    <section class="tab-panel" data-panel="diagnostics">
 
-    <section class="card">
-      <h2>Voice</h2>
-      <label class="field">
-        <span class="label-row">
-          <span class="label">TTS provider</span>
-          <span class="hint">"System" uses your OS's built-in voice.</span>
-        </span>
-        <select id="ttsProvider">
-          <option value="system">System (free, OS native)</option>
-          <option value="openai">OpenAI HD (uses OpenAI key)</option>
-          <option value="off">Off (overlay only, no voice)</option>
-        </select>
-      </label>
+      <section class="card">
+        <h2>Latency \u2014 last <span id="diagCount">0</span> calls</h2>
+        <p class="hint" id="diagEmpty" style="display:none;">
+          No advise() calls recorded yet. Hit \u2325\u21E7S in-game to make one.
+        </p>
 
-      <label class="field" id="ttsVoiceField">
-        <span class="label-row">
-          <span class="label">OpenAI voice</span>
-          <span class="hint">Only used with the OpenAI provider.</span>
-        </span>
-        <select id="ttsVoice">
-          <option value="alloy">Alloy</option>
-          <option value="ash">Ash</option>
-          <option value="ballad">Ballad</option>
-          <option value="coral">Coral</option>
-          <option value="echo">Echo</option>
-          <option value="fable">Fable</option>
-          <option value="nova">Nova</option>
-          <option value="onyx">Onyx</option>
-          <option value="sage">Sage</option>
-          <option value="shimmer">Shimmer</option>
-        </select>
-      </label>
-    </section>
+        <div id="diagSummary" class="diag-summary"></div>
 
-    <section class="card">
-      <h2>Save file location</h2>
-      <label class="field">
-        <span class="label-row">
-          <span class="label">Slay the Spire 2 save folder</span>
-          <span class="hint">Leave blank to auto-detect.</span>
-        </span>
-        <div class="input-row">
-          <input id="saveDir" type="text" autocomplete="off" spellcheck="false" placeholder="(auto-detect)" />
-          <button class="ghost" id="browseBtn" type="button">Browse\u2026</button>
+        <div id="diagBars" class="diag-bars"></div>
+
+        <div class="diag-table-wrap">
+          <table class="diag-table" id="diagTable">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Context</th>
+                <th>Model</th>
+                <th>Shot</th>
+                <th>Build</th>
+                <th>LLM</th>
+                <th>Parse</th>
+                <th>TTS</th>
+                <th class="total">Total</th>
+                <th>$</th>
+              </tr>
+            </thead>
+            <tbody id="diagTbody"></tbody>
+          </table>
         </div>
+
         <div class="row">
-          <button class="ghost small" id="detectBtn" type="button">Auto-detect</button>
-          <span class="status" id="saveDirStatus"></span>
+          <button class="ghost small" id="diagRefreshBtn" type="button">Refresh</button>
+          <button class="ghost small" id="diagClearBtn"   type="button">Clear stats</button>
+          <span class="status" id="diagStatus"></span>
         </div>
-      </label>
+      </section>
+
+      <section class="card" id="speedCard">
+        <h2>Want it faster?</h2>
+        <p class="hint">Quick toggles based on your slowest leg.</p>
+        <div class="speed-actions">
+          <button class="ghost speed-btn" id="speedSwitchModel" type="button">
+            <span class="speed-title">Switch to a lighter model</span>
+            <span class="speed-sub" id="speedSwitchModelSub">Pick a smaller model in the dropdown above.</span>
+          </button>
+          <button class="ghost speed-btn" id="speedDisableTts" type="button">
+            <span class="speed-title">Disable voice (overlay only)</span>
+            <span class="speed-sub" id="speedDisableTtsSub">Cuts the TTS leg entirely.</span>
+          </button>
+        </div>
+        <span class="status" id="speedStatus"></span>
+      </section>
     </section>
 
-    <footer class="actions">
+    <footer class="actions" id="actionsBar">
       <span class="status" id="formStatus"></span>
       <div class="spacer"></div>
       <button class="ghost" id="cancelBtn" type="button">Cancel</button>

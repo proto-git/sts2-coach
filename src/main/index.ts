@@ -67,7 +67,7 @@ async function doAdvise() {
     logger.warn('No OpenRouter API key; opening settings.');
     if (!autoOpenedSettingsForMissingKey) {
       autoOpenedSettingsForMissingKey = true;
-      openSettingsWindow();
+      openSettingsWindow({});
     }
     overlayWin()?.webContents.send('advice', {
       pick: 'Set your OpenRouter API key',
@@ -81,8 +81,12 @@ async function doAdvise() {
   }
   try {
     logger.info('Hotkey: advise');
+    // Patch 17: instrument every leg of the pipeline so the Diagnostics tab
+    // can show users where their latency is going.
+    const tShot = Date.now();
     const shot = await captureScreen();
-    logger.debug(`shot ${shot.width}x${shot.height} ${Math.round(shot.bytes / 1024)}KB`);
+    const screenshotMs = Date.now() - tShot;
+    logger.debug(`shot ${shot.width}x${shot.height} ${Math.round(shot.bytes / 1024)}KB (${screenshotMs}ms)`);
 
     // Build the save-context + plan block (Patch 06).
     const saveContext = lastState?.raw ? inferSaveContext(lastState.raw) : 'unknown';
@@ -127,14 +131,35 @@ async function doAdvise() {
       saveContext,
       planBlock,
       shopBlock,
+      screenshotMs,
     });
+    // Show overlay & persist BEFORE TTS — voice is fire-and-forget.
     overlayWin()?.webContents.send('advice', advice);
     overlayWin()?.show();
-    db?.insertAdvice(advice, undefined, currentRunId);
+
+    // Patch 17: time the TTS leg and merge into advice.timings before
+    // persisting. The overlay already saw the pre-TTS advice; we update
+    // the DB row with the final timing once speak() resolves.
     const voiceLine = advice.runnerUp
       ? `${advice.pick}. ${advice.reasoning} Runner up: ${advice.runnerUp}.`
       : `${advice.pick}. ${advice.reasoning}`;
-    tts?.speak(voiceLine).catch((e) => logger.error('TTS error', e));
+    const tTts = Date.now();
+    tts?.speak(voiceLine)
+      .then(() => {
+        const ttsMs = Date.now() - tTts;
+        if (advice.timings) advice.timings.ttsMs = ttsMs;
+        db?.insertAdvice(advice, undefined, currentRunId);
+      })
+      .catch((e) => {
+        logger.error('TTS error', e);
+        if (advice.timings) advice.timings.ttsMs = Date.now() - tTts;
+        db?.insertAdvice(advice, undefined, currentRunId);
+      });
+    // If TTS is disabled (provider 'off') speak() resolves immediately, but
+    // still ensure we persist even when there's no tts at all:
+    if (!tts) {
+      db?.insertAdvice(advice, undefined, currentRunId);
+    }
   } catch (err) {
     logger.error('Advise failed:', err);
     overlayWin()?.webContents.send('advice', {
@@ -286,6 +311,20 @@ app.on('ready', async () => {
 
   ipcMain.handle('settings:get-models', () => MODEL_OPTIONS);
 
+  // ── Diagnostics IPC (Patch 17) ─────────────────────────────────────────
+  ipcMain.handle('diagnostics:get', (_e, limit?: number) => {
+    if (!db) return [];
+    const n = typeof limit === 'number' && limit > 0 && limit <= 500 ? limit : 50;
+    return db.recentDiagnostics(n);
+  });
+
+  ipcMain.handle('diagnostics:clear', () => {
+    if (!db) return { ok: false, deleted: 0 };
+    const deleted = db.clearDiagnostics();
+    logger.info(`diagnostics cleared (${deleted} rows)`);
+    return { ok: true, deleted };
+  });
+
   ipcMain.on('settings:close', () => {
     BrowserWindow.getAllWindows()
       .filter((w) => w.getTitle().includes('Settings'))
@@ -309,6 +348,7 @@ app.on('ready', async () => {
     setOverlayClickThrough: (v) => overlay?.setClickThrough(v),
     getOverlaySettings: () => overlay!.getSettings(),
     openSettings:     () => openSettingsWindow(),
+    openDiagnostics:  () => openSettingsWindow({ hash: 'diagnostics' }),
     quit:             () => app.quit(),
   });
 

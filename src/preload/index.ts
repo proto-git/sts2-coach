@@ -28,4 +28,10 @@ contextBridge.exposeInMainWorld('api', {
     getModelOptions:() => ipcRenderer.invoke('settings:get-models'),
     close:          () => ipcRenderer.send('settings:close'),
   },
+
+  // Diagnostics IPC (Patch 17) — see src/main/db.ts (DiagnosticRow).
+  diagnostics: {
+    get:    (limit?: number) => ipcRenderer.invoke('diagnostics:get', limit),
+    clear:  () => ipcRenderer.invoke('diagnostics:clear'),
+  },
 });

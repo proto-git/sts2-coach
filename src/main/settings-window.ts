@@ -10,11 +10,24 @@ import { logger } from '@shared/logger';
 
 let win: BrowserWindow | null = null;
 
-export function openSettingsWindow(): BrowserWindow {
+/**
+ * Open (or focus) the single settings window.
+ * @param opts.hash optional URL hash to jump to a specific tab, e.g. 'diagnostics'.
+ */
+export function openSettingsWindow(opts: { hash?: string } = {}): BrowserWindow {
+  const hash = opts.hash ? `#${opts.hash.replace(/^#/, '')}` : '';
+
   if (win && !win.isDestroyed()) {
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
+    if (hash) {
+      // Push the hash so the renderer's hashchange listener flips tabs.
+      void win.webContents.executeJavaScript(
+        `window.location.hash = ${JSON.stringify(hash)};`,
+        true,
+      ).catch((e: unknown) => logger.warn('settings: hash push failed', e));
+    }
     return win;
   }
 
@@ -43,9 +56,12 @@ export function openSettingsWindow(): BrowserWindow {
   // bundled file in production. Renderer bundles live under dist/renderer/.
   const baseUrl = process.env.ELECTRON_RENDERER_URL;
   if (baseUrl) {
-    void win.loadURL(`${baseUrl}/settings/index.html`);
+    void win.loadURL(`${baseUrl}/settings/index.html${hash}`);
   } else {
-    void win.loadFile(path.join(__dirname, '../renderer/settings/index.html'));
+    void win.loadFile(
+      path.join(__dirname, '../renderer/settings/index.html'),
+      hash ? { hash: hash.slice(1) } : undefined,
+    );
   }
 
   win.once('ready-to-show', () => {

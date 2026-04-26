@@ -16,6 +16,8 @@ interface TrayDeps {
   setOverlayClickThrough: (v: boolean) => void;
   getOverlaySettings: () => OverlaySettings;
   openSettings: () => void;
+  /** Patch 17: opens settings window pre-focused on the Diagnostics tab. */
+  openDiagnostics: () => void;
   quit: () => void;
 }
 
@@ -64,7 +66,8 @@ export function createTray(deps: TrayDeps): Tray {
           click: () => { deps.setModel(m.slug); rebuild(); },
         })),
       },
-      { label: 'Settings\u2026', click: () => deps.openSettings() },
+      { label: 'Settings\u2026',     click: () => deps.openSettings() },
+      { label: 'Diagnostics\u2026',  click: () => deps.openDiagnostics() },
       { type: 'separator' },
       { label: 'Show overlay', click: () => deps.showOverlay() },
       { label: 'Hide overlay', click: () => deps.hideOverlay() },

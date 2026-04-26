@@ -78,6 +78,21 @@ export interface Advice {
     /** Approximate USD cost if OpenRouter returns it. */
     costUsd?: number;
   };
+  /** Patch 17: per-leg timing breakdown (milliseconds). Surfaced in Diagnostics. */
+  timings?: {
+    /** Time to capture the screenshot (caller-supplied). */
+    screenshotMs?: number;
+    /** Time spent building the prompt + state blocks. */
+    promptBuildMs?: number;
+    /** Round-trip to OpenRouter (network + model inference). */
+    llmMs?: number;
+    /** Time spent parsing JSON + running post-hoc guards. */
+    parseMs?: number;
+    /** TTS request total (network + audio synth start). 0 when skipped. */
+    ttsMs?: number;
+    /** Total advise() wall time. Mirrors latencyMs. */
+    totalMs?: number;
+  };
 }
 
 export interface CoachRequest {
@@ -87,6 +102,8 @@ export interface CoachRequest {
   userNote?: string;         // optional extra context typed by user
   /** Save-derived context (Patch 06): tells the coach what the save thinks we're doing. */
   saveContext?: 'map' | 'combat' | 'event' | 'shop' | 'rest' | 'unknown';
+  /** Patch 17: caller-supplied screenshot capture latency (ms). */
+  screenshotMs?: number;
   /** Optional shop block (Patch 15). Included when saveContext === 'shop'. */
   shopBlock?: {
     /** Eligible relic IDs for this run's shops, e.g. ["RELIC.LAVA_LAMP", ...]. */

@@ -52,7 +52,11 @@ export class Coach {
   }
 
   async advise(req: CoachRequest): Promise<Advice> {
+    // Patch 17: per-leg timing instrumentation. Each leg is wall-time only —
+    // there is no async parallelism inside advise(), so leg sum ≈ totalMs.
     const start = Date.now();
+    const promptBuildStart = start;
+
     // Patch 18: the system prompt is now LARGE (~6K tokens — header + strict
     // procedure + JSON schema + all knowledge files) and STABLE across calls.
     // We mark it with cache_control so Anthropic models on OpenRouter cache
@@ -147,6 +151,8 @@ export class Coach {
     ].filter(Boolean).join('\n');
 
     logger.debug('Coach request', { model: this.model, hasState: !!req.state });
+    const promptBuildMs = Date.now() - promptBuildStart;
+    const llmStart = Date.now();
 
     // Patch 18: cache_control on the (large, stable) system prompt and
     // the (large, stable) user-text procedure leftover. OpenRouter passes
@@ -186,9 +192,11 @@ export class Coach {
       ...({ usage: { include: true } } as any),
     });
 
+    const llmMs = Date.now() - llmStart;
+    const parseStart = Date.now();
+
     const text = response.choices[0]?.message?.content ?? '';
     const parsed = extractJson(text);
-    const latencyMs = Date.now() - start;
 
     // Patch 18: extract usage. OpenRouter shapes vary by provider; we read
     // both the standard OpenAI fields and Anthropic's cache extensions.
@@ -367,6 +375,18 @@ export class Coach {
 
     const finalPick = shopOverridePick ?? friendlyOverridePick ?? truncatedPick ?? (parsed.pick ?? 'Unable to parse recommendation.');
 
+    const parseMs = Date.now() - parseStart;
+    const latencyMs = Date.now() - start;
+
+    const timings: NonNullable<Advice['timings']> = {
+      screenshotMs: req.screenshotMs,
+      promptBuildMs,
+      llmMs,
+      parseMs,
+      // ttsMs is populated by the caller (doAdvise) after speak() resolves.
+      totalMs: latencyMs,
+    };
+
     const advice: Advice = {
       pick:        finalPick,
       reasoning:   parsed.reasoning ?? text.slice(0, 200),
@@ -379,6 +399,7 @@ export class Coach {
       mapAscii:    req.planBlock?.asciiOverlay ?? req.planBlock?.ascii,
       planSummary: req.planBlock?.summary,
       usage,
+      timings,
     };
 
     // Patch 18: roll into recent-advice buffer for next call's prompt.

@@ -23,7 +23,7 @@ body {
 }
 
 .container {
-  max-width: 560px;
+  max-width: 720px;
   margin: 0 auto;
   padding: 24px 28px 96px;
 }
@@ -150,3 +150,142 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   backdrop-filter: blur(8px);
 }
 .spacer { flex: 1 1 auto; }
+
+/* ============== Tabs (Patch 17) ============================================ */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 16px 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 16px;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.tab:hover { color: var(--text); background: transparent; border-color: transparent; }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent-strong);
+}
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ============== Diagnostics tab ============================================ */
+.diag-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 6px 0 14px;
+}
+.diag-stat {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.diag-stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.diag-stat .v { font-size: 16px; font-weight: 600; color: var(--text); margin-top: 2px; }
+.diag-stat .v.dim { color: var(--muted); font-weight: 500; }
+
+.diag-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 80px;
+  margin: 6px 0 14px;
+  padding: 6px 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.diag-bar {
+  flex: 0 0 14px;
+  display: flex;
+  flex-direction: column-reverse;
+  height: 100%;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: default;
+}
+.diag-bar:hover { outline: 1px solid var(--accent); }
+.diag-bar > span { display: block; width: 100%; }
+.seg-shot   { background: #60a5fa; }  /* blue */
+.seg-build  { background: #a78bfa; }  /* purple */
+.seg-llm    { background: #f59e0b; }  /* amber - usually the biggest */
+.seg-parse  { background: #34d399; }  /* green */
+.seg-tts    { background: #f472b6; }  /* pink */
+
+.diag-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.diag-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+.diag-table-wrap {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.diag-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.diag-table th, .diag-table td {
+  padding: 6px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.diag-table th {
+  background: var(--panel-2);
+  position: sticky;
+  top: 0;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.diag-table td:first-child, .diag-table td:nth-child(2), .diag-table td:nth-child(3),
+.diag-table th:first-child, .diag-table th:nth-child(2), .diag-table th:nth-child(3) {
+  text-align: left;
+}
+.diag-table .total { font-weight: 600; color: var(--text); }
+.diag-table tbody tr:hover { background: rgba(165, 180, 252, 0.06); }
+.diag-table .ms-dim { color: var(--muted); }
+
+/* ============== Want it faster? ============================================ */
+.speed-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.speed-btn {
+  text-align: left;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+.speed-btn .speed-title { font-weight: 600; }
+.speed-btn .speed-sub   { font-size: 12px; color: var(--muted); }
