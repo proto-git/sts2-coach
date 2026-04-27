@@ -15,7 +15,11 @@ Runs natively on **macOS** and **Windows**.
 - **Voice + overlay** — TTS speaks the pick; pinned card shows pick, reasoning, runner-up, and an ASCII map.
 - **Adaptive map planner** — picks an Act path to the boss, re-plans on low HP / high gold / new key relic.
 - **Anti-hallucination guards** — the model must enumerate exactly what's on screen; energy is balance-checked against a card simulator.
-- **Multi-model** — switch between Claude Sonnet/Opus/Haiku, GPT-5.4 family, and Gemini 3 Pro/Flash from the tray.
+- **Multi-model** — 8 curated models in the tray menu: Gemini 3 Flash (default), Gemini 3.1 Pro, Claude Sonnet 4.6, GPT-5.4, GPT-5.2 Chat, GLM 5.1, Kimi K2.6, and DeepSeek V4 Pro.
+- **Prompt caching** — the ~5.6K-token system prompt is cached on OpenRouter, so subsequent calls only pay for the new state + screenshot.
+- **Diagnostics** — built-in latency dashboard breaks down screenshot / LLM / TTS time per call, with a slowest-leg "want it faster?" panel.
+- **Read-only mode** — silence voice with a single toggle (tray or settings), great for late-night runs.
+- **Multi-monitor friendly** — drag the overlay freely across displays; it auto-rescues if a monitor disappears.
 - **Cross-platform** — Electron app, identical UX on macOS and Windows.
 
 ## Requirements
@@ -39,13 +43,14 @@ Grab the latest installer from the [Releases page](../../releases):
 > grant it in *System Settings → Privacy & Security → Screen Recording* and
 > restart the app.
 
-After install, drop your API keys in the settings file (location shown in the
-tray menu → "Open config folder").
+On first launch, click the tray icon → **Settings…** and paste your
+OpenRouter API key. (Optional OpenAI key for HD voice in the same panel.)
+A "Get a key →" link is right there if you don't have one yet.
 
 ### From source
 
 ```bash
-git clone https://github.com/<your-user>/sts2-coach.git
+git clone https://github.com/proto-git/sts2-coach.git
 cd sts2-coach
 cp .env.example .env       # paste OPENROUTER_API_KEY (and OPENAI_API_KEY if using)
 npm install
