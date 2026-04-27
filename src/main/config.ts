@@ -113,8 +113,22 @@ export function loadAppConfig(): AppConfig {
   try {
     const raw = fs.readFileSync(configFile(), 'utf8');
     const parsed = JSON.parse(raw);
-    cached = sanitize({ ...DEFAULTS, ...parsed });
+    const sanitized = sanitize({ ...DEFAULTS, ...parsed });
+    cached = sanitized;
     logger.debug('app config loaded', { ...cached, openrouterApiKey: redact(cached.openrouterApiKey), openaiApiKey: redact(cached.openaiApiKey) });
+
+    // Migration write-back: if sanitize had to fix a stale model slug (e.g.
+    // 'google/gemini-3-flash' -> 'google/gemini-3-flash-preview' after the
+    // OpenRouter slugs changed), persist the corrected value so the user
+    // doesn't keep hitting 400s next launch via a different code path.
+    if (typeof parsed.defaultModel === 'string' && parsed.defaultModel.length > 0 && parsed.defaultModel !== sanitized.defaultModel) {
+      logger.info('migrating stale model slug', { from: parsed.defaultModel, to: sanitized.defaultModel });
+      try {
+        fs.writeFileSync(configFile(), JSON.stringify(sanitized, null, 2));
+      } catch (err) {
+        logger.warn('failed to persist migrated config', err);
+      }
+    }
   } catch {
     cached = { ...DEFAULTS };
   }

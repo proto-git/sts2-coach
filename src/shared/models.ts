@@ -7,7 +7,7 @@ import type { ModelOption } from './types';
 //   3. Sub-15s typical latency (the game pauses while waiting)
 //   4. Prompt caching support on OpenRouter (Patch 18 savings)
 //
-// OpenRouter slugs verified April 2026. Ordering: default first, then
+// OpenRouter slugs verified April 27 2026 against /api/v1/models. Ordering: default first, then
 // roughly by speed/cost ascending within tier.
 //
 // Models we deliberately EXCLUDED and why:
@@ -20,13 +20,13 @@ import type { ModelOption } from './types';
 //                                    on grounded tasks for a coach reading game state
 export const MODEL_OPTIONS: ModelOption[] = [
   // === Default tier: best speed/quality/price for typical advise calls ===
-  { slug: 'google/gemini-3-flash',             label: 'Gemini 3 Flash (default, fast+cheap)' },
+  { slug: 'google/gemini-3-flash-preview',     label: 'Gemini 3 Flash (default, fast+cheap)' },
   // === Reasoning tier: when you want deeper thought ===
   { slug: 'google/gemini-3.1-pro-preview',     label: 'Gemini 3.1 Pro (best reasoning)' },
   { slug: 'anthropic/claude-sonnet-4.6',       label: 'Claude Sonnet 4.6 (best JSON discipline)' },
   { slug: 'openai/gpt-5.4',                    label: 'GPT-5.4 (well-rounded)' },
   // === Budget tier: cheaper alternatives that still hit quality bar ===
-  { slug: 'openai/gpt-5.2-chat-latest',        label: 'GPT-5.2 Chat (cheaper OpenAI)' },
+  { slug: 'openai/gpt-5.2-chat',               label: 'GPT-5.2 Chat (cheaper OpenAI)' },
   // === Open-weights tier: top open models with vision + caching ===
   { slug: 'z-ai/glm-5.1',                      label: 'GLM 5.1 (top open, MIT)' },
   { slug: 'moonshotai/kimi-k2.6',              label: 'Kimi K2.6 (open, native vision)' },
@@ -40,4 +40,4 @@ export const MODEL_OPTIONS: ModelOption[] = [
  *   - ~3x faster than Pro models, fits the hotkey-driven UX
  *   - Vision-native, JSON-disciplined, supports OpenRouter caching
  */
-export const DEFAULT_MODEL = 'google/gemini-3-flash';
+export const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
