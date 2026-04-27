@@ -186,7 +186,10 @@ export class Coach {
           ],
         },
       ],
-      max_tokens: 1200,
+      // Patch 19a: bumped from 1200 → 2000. Claude 4.x sometimes uses more
+      // tokens for the seen/long_form blocks and was getting truncated
+      // mid-JSON, leading to parse failures.
+      max_tokens: 2000,
       temperature: 0.2,
       // Tell OpenRouter we want usage details back (tokens + cache).
       ...({ usage: { include: true } } as any),
@@ -197,6 +200,16 @@ export class Coach {
 
     const text = response.choices[0]?.message?.content ?? '';
     const parsed = extractJson(text);
+    // Patch 19a: when parsing fails entirely (parsed has no `pick` *and* no
+    // `seen`), log the raw response so we can diagnose. Claude models on
+    // OpenRouter occasionally return prose-only or oddly-fenced output.
+    if (!parsed.pick && !parsed.seen) {
+      const preview = text.slice(0, 500).replace(/\s+/g, ' ');
+      logger.warn(
+        `coach: failed to parse JSON from ${this.model} (${text.length} chars). ` +
+        `Preview: ${preview || '<empty>'}`,
+      );
+    }
 
     // Patch 18: extract usage. OpenRouter shapes vary by provider; we read
     // both the standard OpenAI fields and Anthropic's cache extensions.
@@ -594,11 +607,68 @@ export function enforceEnergyCap(
   return { grossCost, totalGain, netCost, keptCards: kept, overBudget: netCost > cap };
 }
 
+/**
+ * Extract a JSON object from model output. Robust to:
+ *  - raw JSON
+ *  - JSON wrapped in ```json ... ``` or ``` ... ``` fences (Claude habit)
+ *  - prose preamble/postamble around the JSON
+ *  - multiple candidate {...} spans (picks the largest one that parses)
+ */
 function extractJson(text: string): any {
+  if (!text) return {};
+
+  // 1) Try the raw text first — fastest path when the model behaves.
   try { return JSON.parse(text); } catch {}
-  const m = text.match(/\{[\s\S]*\}/);
-  if (m) { try { return JSON.parse(m[0]); } catch {} }
+
+  // 2) Strip a markdown code fence if present. Claude likes ```json blocks.
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1]); } catch {}
+  }
+
+  // 3) Walk the string and collect every balanced {...} span, then try the
+  //    largest first. A naive `.match(/\{[\s\S]*\}/)` matches greedily but
+  //    fails if there's a trailing brace from a different sentence.
+  const candidates = findBalancedBraces(text);
+  candidates.sort((a, b) => b.length - a.length);
+  for (const c of candidates) {
+    try { return JSON.parse(c); } catch {}
+  }
+
   return {};
+}
+
+/**
+ * Return all top-level balanced {...} substrings in `text`. Tracks string
+ * literals (so braces inside strings don't unbalance the count) and escapes.
+ */
+function findBalancedBraces(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        out.push(text.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return out;
 }
 
 /**
