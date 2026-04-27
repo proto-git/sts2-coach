@@ -206,7 +206,9 @@ async function doAdvise() {
 }
 
 async function doDeckDump() {
-  emitPending('deck-dump');
+  // Patch 19b: deck-dump is instant (no LLM call), so we must NOT enter the
+  // pending state — the overlay's 30s safety timer would fire and show
+  // "No response (timed out)" even though the dump succeeded.
   logger.info('Hotkey: deck dump');
   if (!lastState) {
     if (!readOnlyMode) tts?.speak('No save data detected yet.').catch(() => {});
