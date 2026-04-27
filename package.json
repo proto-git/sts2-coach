@@ -1,6 +1,6 @@
 {
   "name": "sts2-coach",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Local voice + overlay coach for Slay the Spire 2 (macOS + Windows).",
   "main": "dist/main/index.js",
   "type": "commonjs",
