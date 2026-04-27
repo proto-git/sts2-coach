@@ -1,6 +1,6 @@
 {
   "name": "sts2-coach",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local voice + overlay coach for Slay the Spire 2 (macOS + Windows).",
   "main": "dist/main/index.js",
   "type": "commonjs",
@@ -42,11 +42,17 @@
     },
     "mac": {
       "category": "public.app-category.utilities",
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "hardenedRuntime": false
     },
     "win": {
-      "target": ["nsis", "zip"],
+      "target": [
+        "nsis",
+        "zip"
+      ],
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
