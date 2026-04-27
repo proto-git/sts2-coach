@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>STS2 Coach \u2014 Settings</title>
+  <title>STS2 Coach — Settings</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -27,25 +27,25 @@
         <label class="field">
           <span class="label-row">
             <span class="label">OpenRouter API key <span class="required">*</span></span>
-            <span class="hint">Required \u2014 powers the coach's advice.</span>
+            <span class="hint">Required — powers the coach's advice.</span>
           </span>
           <div class="input-row">
             <input id="openrouterKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-..." />
-            <button class="ghost reveal" data-target="openrouterKey" type="button" title="Show/hide">\u{1F441}</button>
+            <button class="ghost reveal" data-target="openrouterKey" type="button" title="Show/hide">👁</button>
           </div>
-          <a class="link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key \u2192</a>
+          <a class="link" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key →</a>
         </label>
 
         <label class="field">
           <span class="label-row">
             <span class="label">OpenAI API key</span>
-            <span class="hint">Optional \u2014 enables HD voice. Falls back to system TTS.</span>
+            <span class="hint">Optional — enables HD voice. Falls back to system TTS.</span>
           </span>
           <div class="input-row">
             <input id="openaiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-..." />
-            <button class="ghost reveal" data-target="openaiKey" type="button" title="Show/hide">\u{1F441}</button>
+            <button class="ghost reveal" data-target="openaiKey" type="button" title="Show/hide">👁</button>
           </div>
-          <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get a key \u2192</a>
+          <a class="link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get a key →</a>
         </label>
       </section>
 
@@ -85,7 +85,7 @@
         <label class="field checkbox-field">
           <input id="hotkeyDing" type="checkbox" />
           <span>
-            <span class="label">Play a chime on ⌥⇧S</span>
+            <span class="label" id="chimeLabel">Play a chime on hotkey</span>
             <span class="hint">Tiny audible ack so you know the hotkey was caught.</span>
           </span>
         </label>
@@ -119,7 +119,7 @@
           </span>
           <div class="input-row">
             <input id="saveDir" type="text" autocomplete="off" spellcheck="false" placeholder="(auto-detect)" />
-            <button class="ghost" id="browseBtn" type="button">Browse\u2026</button>
+            <button class="ghost" id="browseBtn" type="button">Browse…</button>
           </div>
           <div class="row">
             <button class="ghost small" id="detectBtn" type="button">Auto-detect</button>
@@ -134,7 +134,7 @@
         <div class="row" style="justify-content: space-between; align-items: center;">
           <div>
             <div><strong>STS2 Coach</strong> <span id="appVersion" class="hint">v?.?.?</span></div>
-            <div class="hint" id="updateStatusText">Checking for updates\u2026</div>
+            <div class="hint" id="updateStatusText">Checking for updates…</div>
           </div>
           <div class="row" style="gap: 8px;">
             <button class="ghost small" id="checkUpdateBtn" type="button">Check now</button>
@@ -149,9 +149,9 @@
     <section class="tab-panel" data-panel="diagnostics">
 
       <section class="card">
-        <h2>Latency \u2014 last <span id="diagCount">0</span> calls</h2>
+        <h2>Latency — last <span id="diagCount">0</span> calls</h2>
         <p class="hint" id="diagEmpty" style="display:none;">
-          No advise() calls recorded yet. Hit \u2325\u21E7S in-game to make one.
+          <span id="diagEmptyText">No advise() calls recorded yet. Hit the advise hotkey in-game to make one.</span>
         </p>
 
         <div id="diagSummary" class="diag-summary"></div>

@@ -1,6 +1,21 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeImage } from 'electron';
 import * as path from 'path';
 import { logger } from '@shared/logger';
+
+/** Resolves to the platform-appropriate window icon (used in title bar +
+ * taskbar). On Windows we MUST set this explicitly; otherwise Electron
+ * shows its default placeholder. */
+function windowIcon(): Electron.NativeImage {
+  // Prefer .ico on Windows (multi-res), fall back to .png everywhere.
+  const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const p = path.join(__dirname, '../../assets', file);
+  try {
+    const img = nativeImage.createFromPath(p);
+    return img.isEmpty() ? nativeImage.createEmpty() : img;
+  } catch {
+    return nativeImage.createEmpty();
+  }
+}
 
 /**
  * Single-instance settings window. Unlike the overlay, this is a normal
@@ -37,6 +52,7 @@ export function openSettingsWindow(opts: { hash?: string } = {}): BrowserWindow 
     minWidth: 480,
     minHeight: 580,
     title: 'STS2 Coach \u2014 Settings',
+    icon: windowIcon(),
     show: false,
     resizable: true,
     minimizable: true,

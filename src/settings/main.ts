@@ -2,6 +2,8 @@
  * Settings window renderer. Talks to the main process via the preload API
  * defined in src/preload/index.ts (window.api.settings + window.api.diagnostics).
  */
+import { hotkeyLabels } from '@shared/hotkey-labels';
+
 export {}; // make this file a module so locally-declared types don't leak
 
 interface SettingsApi {
@@ -174,6 +176,15 @@ async function init() {
 
   updateTtsVoiceVisibility();
   validate();
+
+  // Per-platform hotkey labels: ⌥⇧S on Mac, Alt+Shift+S on Windows.
+  const hk = hotkeyLabels();
+  const chime = document.getElementById('chimeLabel');
+  if (chime) chime.textContent = `Play a chime on ${hk.advise}`;
+  const diagEmptyText = document.getElementById('diagEmptyText');
+  if (diagEmptyText) {
+    diagEmptyText.textContent = `No advise() calls recorded yet. Hit ${hk.advise} in-game to make one.`;
+  }
 
   // If the tray asked us to land on Diagnostics, honor #diagnostics.
   if (window.location.hash === '#diagnostics') switchTab('diagnostics');

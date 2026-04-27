@@ -1,6 +1,7 @@
 import { Tray, Menu, nativeImage } from 'electron';
 import * as path from 'path';
 import { MODEL_OPTIONS } from '@shared/models';
+import { hotkeyLabels } from '@shared/hotkey-labels';
 import type { SnapZone, OverlaySettings } from './settings';
 
 interface TrayDeps {
@@ -41,12 +42,28 @@ const ZONES: { label: string; zone: SnapZone }[] = [
 const OPACITIES = [1.0, 0.85, 0.7, 0.55];
 
 export function createTray(deps: TrayDeps): Tray {
-  const iconPath = path.join(__dirname, '../../assets/trayTemplate.png');
+  // Per-platform tray asset:
+  //   macOS  — monochrome "template" image; system tints it for dark/light bar.
+  //   Win    — multi-size .ico so Windows can pick 16/24/32 as needed.
+  //   Linux  — colored .png.
+  // setTemplateImage(true) MUST NOT be called on Windows or the icon renders
+  // as a transparent square (since template means "alpha is the silhouette,
+  // tint it system color" — a Mac-only convention).
+  const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
+  const file =
+    isMac ? 'trayTemplate.png' :
+    isWin ? 'icon.ico'         :
+            'icon.png';
+  const iconPath = path.join(__dirname, '../../assets', file);
   let icon: Electron.NativeImage;
   try {
     icon = nativeImage.createFromPath(iconPath);
-    if (icon.isEmpty()) icon = nativeImage.createEmpty();
-    else icon.setTemplateImage(true);
+    if (icon.isEmpty()) {
+      icon = nativeImage.createEmpty();
+    } else if (isMac) {
+      icon.setTemplateImage(true);
+    }
   } catch {
     icon = nativeImage.createEmpty();
   }
@@ -57,10 +74,11 @@ export function createTray(deps: TrayDeps): Tray {
   const rebuild = () => {
     const model = deps.getCurrentModel();
     const s = deps.getOverlaySettings();
+    const hk = hotkeyLabels();
 
     const menu = Menu.buildFromTemplate([
-      { label: 'Advise now  ⌥⇧S',      click: () => deps.triggerAdvise() },
-      { label: 'Deck dump now  ⌥⇧D',   click: () => deps.triggerDeckDump() },
+      { label: `Advise now  ${hk.advise}`,    click: () => deps.triggerAdvise() },
+      { label: `Deck dump now  ${hk.deck}`,   click: () => deps.triggerDeckDump() },
       { type: 'separator' },
       {
         label: 'Model',
@@ -71,8 +89,8 @@ export function createTray(deps: TrayDeps): Tray {
           click: () => { deps.setModel(m.slug); rebuild(); },
         })),
       },
-      { label: 'Settings\u2026',     click: () => deps.openSettings() },
-      { label: 'Diagnostics\u2026',  click: () => deps.openDiagnostics() },
+      { label: 'Settings…',     click: () => deps.openSettings() },
+      { label: 'Diagnostics…',  click: () => deps.openDiagnostics() },
       {
         label: 'Read-only mode (silence voice)',
         type: 'checkbox',

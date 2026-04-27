@@ -46,6 +46,7 @@
         "dmg",
         "zip"
       ],
+      "icon": "assets/icon.icns",
       "hardenedRuntime": false
     },
     "win": {
@@ -53,6 +54,7 @@
         "nsis",
         "zip"
       ],
+      "icon": "assets/icon.ico",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
@@ -61,7 +63,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "STS2 Coach"
+      "shortcutName": "STS2 Coach",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
     },
     "files": [
       "dist/**/*",

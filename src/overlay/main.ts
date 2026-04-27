@@ -1,3 +1,5 @@
+import { hotkeyLabels } from '@shared/hotkey-labels';
+
 export {};
 
 declare global {
@@ -164,6 +166,11 @@ function wireDrag() {
 }
 
 async function init() {
+  // Per-platform hotkey labels: ⌥⇧S on Mac, Alt+Shift+S on Windows.
+  const hk = hotkeyLabels();
+  $('pick').textContent = `Press ${hk.advise} for advice.`;
+  ($('close') as HTMLButtonElement).title = `Hide (${hk.advise} to re-trigger)`;
+
   ($('close') as HTMLButtonElement).addEventListener('click', () => window.api.hideOverlay());
   ($('pin') as HTMLButtonElement).addEventListener('click', () => {
     window.api.setLocked(!locked);
