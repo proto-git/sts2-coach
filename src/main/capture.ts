@@ -47,15 +47,28 @@ export interface CaptureResult {
  */
 export async function captureScreen(): Promise<CaptureResult> {
   try {
-    const primary = screen.getPrimaryDisplay();
-    const { width: dispW, height: dispH } = primary.size;
+    // Multi-monitor fix (Patch 19g): capture the display under the user's
+    // mouse cursor, not the OS "primary" display. The cursor is on whatever
+    // monitor the game window has focus on when the user presses the
+    // hotkey, so this naturally captures the right screen even when the
+    // game lives on monitor #2 / #3.
+    const cursorPt = screen.getCursorScreenPoint();
+    const target =
+      screen.getDisplayNearestPoint(cursorPt) ?? screen.getPrimaryDisplay();
+    const { width: dispW, height: dispH } = target.size;
+    logger.debug('capture: target display', {
+      id: target.id,
+      isPrimary: target.id === screen.getPrimaryDisplay().id,
+      cursorPt,
+      size: target.size,
+    });
 
     // Try desktopCapturer with retries — macOS sometimes returns an empty
     // thumbnail on subsequent calls in the same session.
     let pngBuffer: Buffer | null = null;
     let lastDiag = '';
     for (let attempt = 1; attempt <= CAPTURE_RETRY_ATTEMPTS; attempt++) {
-      const result = await tryDesktopCapturer(dispW, dispH, primary.id);
+      const result = await tryDesktopCapturer(dispW, dispH, target.id);
       if (result.ok) {
         pngBuffer = result.buf;
         if (attempt > 1) {
@@ -72,9 +85,16 @@ export async function captureScreen(): Promise<CaptureResult> {
 
     // macOS fallback: screencapture is the same CLI the original implementation
     // used. It bypasses the desktopCapturer empty-thumbnail bug entirely.
+    // -D <displayId> targets a specific display when the cursor isn't on the
+    // primary; macOS numbers displays starting at 1 in the order they
+    // appear in `system_profiler SPDisplaysDataType`. We translate from
+    // Electron's display.id to that 1-based index by listing all displays.
     if (!pngBuffer && os.platform() === 'darwin') {
       logger.warn(`captureScreen: falling back to screencapture CLI (${lastDiag})`);
-      pngBuffer = await macScreencaptureFallback();
+      const allDisplays = screen.getAllDisplays();
+      const displayIndex = allDisplays.findIndex((d) => d.id === target.id);
+      const macDisplayArg = displayIndex >= 0 ? displayIndex + 1 : 1;
+      pngBuffer = await macScreencaptureFallback(macDisplayArg);
     }
 
     if (!pngBuffer || pngBuffer.byteLength === 0) {
@@ -178,12 +198,16 @@ async function tryDesktopCapturer(
  * to a temp PNG, read it back, and unlink it. This is what the original
  * implementation used — it's slower (~120ms vs ~30ms) but rock-solid.
  */
-async function macScreencaptureFallback(): Promise<Buffer> {
+async function macScreencaptureFallback(displayIndex: number = 1): Promise<Buffer> {
   const tmpDir = app.getPath('temp');
   const file = path.join(tmpDir, `sts2-coach-${process.pid}-${Date.now()}.png`);
   try {
-    // -x = silent (no shutter sound); -t png = format; -C = capture cursor (off by default — leave it off)
-    await execFileP('screencapture', ['-x', '-t', 'png', file], { timeout: 5000 });
+    // -x = silent (no shutter sound); -t png = format;
+    // -D <n> = capture display number n (1-based). Without -D, screencapture
+    // grabs the display containing the menu bar, which is wrong when the game
+    // is on a secondary monitor.
+    // -C = capture cursor (off by default — leave it off)
+    await execFileP('screencapture', ['-x', '-D', String(displayIndex), '-t', 'png', file], { timeout: 5000 });
     const buf = await fs.promises.readFile(file);
     return buf;
   } finally {

@@ -128,25 +128,56 @@ $s.Speak([Console]::In.ReadToEnd());
         cmd = 'afplay';
         args = [file];
       } else if (platform === 'win32') {
-        // PowerShell can play MP3 via the Windows Media Player COM API. We
-        // block the script until playback finishes by polling .currentMedia.
+        // Patch 19g: the previous WMPlayer.OCX implementation polled
+        // `playState -ne 1`, but Windows Media Player's playState enum has
+        // 1 = Stopped (the END state), 3 = Playing, 9 = Transitioning, etc.
+        // The poll loop exited immediately while the audio was still in state
+        // 0 (Undefined) or 9, cutting playback off before any sound came out.
+        //
+        // Switch to WPF's MediaPlayer (System.Windows.Media.MediaPlayer) which
+        // exposes a real MediaEnded event. We pump the dispatcher until it
+        // fires, with a hard 60s ceiling as a safety net for short TTS clips
+        // that would normally finish in <10s.
+        const uri = 'file:///' + file.replace(/\\/g, '/').replace(/'/g, "''");
         const psScript = `
-$p = New-Object -ComObject WMPlayer.OCX;
-$p.URL = '${file.replace(/'/g, "''")}';
-$p.controls.play();
-while ($p.playState -ne 1) { Start-Sleep -Milliseconds 100; }
+$ErrorActionPreference = 'Stop';
+Add-Type -AssemblyName PresentationCore;
+$p = New-Object System.Windows.Media.MediaPlayer;
+$done = $false;
+$p.add_MediaEnded({ $script:done = $true });
+$p.add_MediaFailed({ param($s,$e) Write-Error $e.ErrorException; $script:done = $true });
+$p.Open([Uri]'${uri}');
+$p.Play();
+$start = Get-Date;
+while (-not $done -and ((Get-Date) - $start).TotalSeconds -lt 60) {
+  [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke(
+    [System.Windows.Threading.DispatcherPriority]::Background,
+    [Action]{}
+  );
+  Start-Sleep -Milliseconds 50;
+}
+$p.Stop();
+$p.Close();
 `;
         const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
         cmd = 'powershell.exe';
-        args = ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded];
+        args = ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', encoded];
       } else {
         // Linux: try ffplay (silent), fall back to mpg123/aplay if needed.
         cmd = 'ffplay';
         args = ['-nodisp', '-autoexit', '-loglevel', 'quiet', file];
       }
       this.currentProc = spawn(cmd, args, { stdio: 'ignore' });
-      this.currentProc.on('exit', () => resolve());
-      this.currentProc.on('error', reject);
+      this.currentProc.on('exit', (code) => {
+        if (code !== 0 && code !== null) {
+          logger.warn(`TTS playback exited with code ${code} (cmd=${cmd})`);
+        }
+        resolve();
+      });
+      this.currentProc.on('error', (err) => {
+        logger.error('TTS playback spawn error:', err);
+        reject(err);
+      });
     });
   }
 }
