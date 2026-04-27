@@ -37,6 +37,11 @@ export default defineConfig({
   },
   renderer: {
     root: 'src',
+    resolve: {
+      alias: {
+        '@shared': resolve(__dirname, 'src/shared'),
+      },
+    },
     build: {
       outDir: 'dist/renderer',
       rollupOptions: {
