@@ -70,6 +70,31 @@ html, body {
 }
 .card.ro .ro-badge { display: inline-block; }
 
+/* Patch 19d — update banner pill in the overlay header. Hidden until the
+   updater confirms a newer release. Visually distinct (warm accent) so it
+   reads as an action, not a status. */
+.update-pill {
+  display: none;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  margin: 0 2px 0 4px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.18);
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  -webkit-app-region: no-drag;
+}
+.update-pill:hover {
+  background: rgba(251, 191, 36, 0.28);
+  color: #fde68a;
+}
+.card.update-available .update-pill { display: inline-block; }
+
 /* Patch 16 — thinking dots. Animated only while .card.pending is set. */
 .thinking-dots {
   display: none;

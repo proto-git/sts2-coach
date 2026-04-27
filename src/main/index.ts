@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 
@@ -17,6 +17,14 @@ import { planOnState, type PlanDecision } from './planner';
 import { computeViewport, extractMap, inferSaveContext, renderAscii } from './map';
 import { extractShopRelicPool } from './shop';
 import { MODEL_OPTIONS } from '@shared/models';
+import {
+  startUpdater,
+  stopUpdater,
+  getUpdateStatus,
+  checkForUpdatesNow,
+  dismissCurrentUpdate,
+  onUpdateAvailable,
+} from './updater';
 import {
   configFilePath,
   effectiveConfig,
@@ -426,11 +434,29 @@ app.on('ready', async () => {
     logger.info('First run / missing key — opening Settings.');
     openSettingsWindow();
   }
+
+  // ── Update banner (Patch 19d) ───────────────────────────────────────────
+  // Polls GitHub Releases. When a newer tag exists, the overlay shows a
+  // small "v0.X.Y available" pill that opens the release page on click.
+  ipcMain.handle('updater:get', () => getUpdateStatus());
+  ipcMain.handle('updater:check-now', () => checkForUpdatesNow());
+  ipcMain.handle('updater:dismiss', () => dismissCurrentUpdate());
+  ipcMain.on('updater:open', () => {
+    const url = getUpdateStatus().releaseUrl;
+    if (url) shell.openExternal(url).catch((e) => logger.warn(`open url: ${e}`));
+  });
+  // Push the status to the overlay whenever a new release first appears,
+  // so the banner can pop in without the renderer having to poll.
+  onUpdateAvailable((s) => {
+    overlayWin()?.webContents.send('update-available', s);
+  });
+  startUpdater();
 });
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   watcher?.stop();
+  stopUpdater();
 });
 
 app.on('window-all-closed', () => {

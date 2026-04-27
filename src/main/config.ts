@@ -54,6 +54,13 @@ export interface AppConfig {
    * avoid surprising new users; many will prefer the silent visual ack.
    */
   hotkeyDing: boolean;
+  /**
+   * Patch 19d: tag of the latest release the user explicitly dismissed via
+   * the "don't bug me" button on the update banner. Empty string means
+   * undismissed. Reset on every new release: when the polled latest tag
+   * differs from this stored tag, the banner shows again.
+   */
+  updateDismissedVersion: string;
   /** Bumped on schema migrations \u2014 reserved for future use. */
   schemaVersion: number;
 }
@@ -69,6 +76,7 @@ const DEFAULTS: AppConfig = {
   ttsVoice: 'alloy',
   readOnlyMode: false,
   hotkeyDing: false,
+  updateDismissedVersion: '',
   schemaVersion: SCHEMA_VERSION,
 };
 
@@ -177,6 +185,7 @@ export function effectiveConfig(): EffectiveConfig {
     // if anyone asks; the tray toggle covers the common case.
     readOnlyMode:     c.readOnlyMode,
     hotkeyDing:       c.hotkeyDing,
+    updateDismissedVersion: c.updateDismissedVersion,
     schemaVersion:    c.schemaVersion,
     sources: {
       openrouterApiKey: ork.source,
@@ -210,6 +219,7 @@ function sanitize(c: AppConfig): AppConfig {
     ttsVoice:         typeof c.ttsVoice === 'string' && c.ttsVoice.length > 0 ? c.ttsVoice : 'alloy',
     readOnlyMode:     typeof c.readOnlyMode === 'boolean' ? c.readOnlyMode : false,
     hotkeyDing:       typeof c.hotkeyDing === 'boolean' ? c.hotkeyDing : false,
+    updateDismissedVersion: typeof c.updateDismissedVersion === 'string' ? c.updateDismissedVersion : '',
     schemaVersion:    SCHEMA_VERSION,
   };
 }

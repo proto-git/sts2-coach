@@ -127,6 +127,22 @@
           </div>
         </label>
       </section>
+
+      <!-- About / Updates ===================================================== -->
+      <section class="card">
+        <h2>About</h2>
+        <div class="row" style="justify-content: space-between; align-items: center;">
+          <div>
+            <div><strong>STS2 Coach</strong> <span id="appVersion" class="hint">v?.?.?</span></div>
+            <div class="hint" id="updateStatusText">Checking for updates\u2026</div>
+          </div>
+          <div class="row" style="gap: 8px;">
+            <button class="ghost small" id="checkUpdateBtn" type="button">Check now</button>
+            <button class="primary small" id="openUpdateBtn" type="button" style="display:none;">Download update</button>
+            <button class="ghost small" id="dismissUpdateBtn" type="button" style="display:none;" title="Hide the banner until the next release">Dismiss</button>
+          </div>
+        </div>
+      </section>
     </section>
 
     <!-- ============================== DIAGNOSTICS TAB ============================ -->

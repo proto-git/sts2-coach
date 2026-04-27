@@ -18,6 +18,17 @@ declare global {
       resizeOverlay: (h: number) => void;
       dragOverlay: (dx: number, dy: number) => void;
       endDragOverlay: () => void;
+      // Patch 19d — update banner.
+      updater: {
+        get: () => Promise<{
+          currentVersion: string;
+          latestVersion: string | null;
+          updateAvailable: boolean;
+          releaseUrl: string | null;
+        }>;
+        open: () => void;
+        onAvailable: (cb: (s: { updateAvailable: boolean; latestVersion: string | null }) => void) => void;
+      };
     };
   }
 }
@@ -208,7 +219,28 @@ async function init() {
   window.api.onReadOnlyChange((v) => setReadOnly(v));
   setReadOnly(await window.api.getReadOnly());
 
+  // Patch 19d — update banner. Initial fetch covers "app started AFTER a
+  // release was already published"; the listener handles "release dropped
+  // while app was running".
+  ($('update-pill') as HTMLButtonElement).addEventListener('click', () => {
+    window.api.updater.open();
+  });
+  applyUpdateStatus(await window.api.updater.get());
+  window.api.updater.onAvailable((s) => applyUpdateStatus(s));
+
   requestAnimationFrame(reportSize);
+}
+
+function applyUpdateStatus(s: { updateAvailable: boolean; latestVersion: string | null }) {
+  const card = $('card');
+  const pill = $('update-pill') as HTMLButtonElement;
+  if (s.updateAvailable && s.latestVersion) {
+    card.classList.add('update-available');
+    pill.textContent = `⬆︎ v${s.latestVersion}`;
+    requestAnimationFrame(reportSize);
+  } else {
+    card.classList.remove('update-available');
+  }
 }
 
 function renderState(s: any) {

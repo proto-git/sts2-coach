@@ -47,4 +47,17 @@ contextBridge.exposeInMainWorld('api', {
     get:    (limit?: number) => ipcRenderer.invoke('diagnostics:get', limit),
     clear:  () => ipcRenderer.invoke('diagnostics:clear'),
   },
+
+  // Update banner IPC (Patch 19d) — see src/main/updater.ts (UpdateStatus).
+  updater: {
+    get:        () => ipcRenderer.invoke('updater:get'),
+    checkNow:   () => ipcRenderer.invoke('updater:check-now'),
+    dismiss:    () => ipcRenderer.invoke('updater:dismiss'),
+    /** Open the release page in the user's default browser. */
+    open:       () => ipcRenderer.send('updater:open'),
+    /** Push from main when a newer release first appears. */
+    onAvailable: (cb: (status: any) => void) => {
+      ipcRenderer.on('update-available', (_, s) => cb(s));
+    },
+  },
 });

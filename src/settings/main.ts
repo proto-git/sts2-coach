@@ -23,6 +23,25 @@ interface DiagnosticsApi {
   clear: () => Promise<{ ok: boolean; deleted: number }>;
 }
 
+/** Mirrors src/main/updater.ts -> UpdateStatus. */
+interface UpdateStatus {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string | null;
+  releaseNotes: string | null;
+  lastCheckedAt: number | null;
+  lastError: string | null;
+}
+
+interface UpdaterApi {
+  get:        () => Promise<UpdateStatus>;
+  checkNow:   () => Promise<UpdateStatus>;
+  dismiss:    () => Promise<UpdateStatus>;
+  open:       () => void;
+  onAvailable:(cb: (s: UpdateStatus) => void) => void;
+}
+
 interface AppConfigShape {
   openrouterApiKey: string;
   openaiApiKey: string;
@@ -57,9 +76,10 @@ interface DiagnosticRow {
 // Use a typed accessor instead of redeclaring window.api globally — the
 // overlay renderer also augments Window with a different api shape, and TS
 // would conflict on the merge.
-type WindowApi = { api: { settings: SettingsApi; diagnostics: DiagnosticsApi } };
+type WindowApi = { api: { settings: SettingsApi; diagnostics: DiagnosticsApi; updater: UpdaterApi } };
 const api:      SettingsApi    = (window as unknown as WindowApi).api.settings;
 const diagApi:  DiagnosticsApi = (window as unknown as WindowApi).api.diagnostics;
+const updaterApi: UpdaterApi   = (window as unknown as WindowApi).api.updater;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -99,6 +119,12 @@ const els = {
   speedDisableTts:  $<HTMLButtonElement>('speedDisableTts'),
   speedDisableTtsSub: $<HTMLSpanElement>('speedDisableTtsSub'),
   speedStatus:      $<HTMLSpanElement>('speedStatus'),
+  // About / Updates (Patch 19d)
+  appVersion:       $<HTMLSpanElement>('appVersion'),
+  updateStatusText: $<HTMLDivElement>('updateStatusText'),
+  checkUpdateBtn:   $<HTMLButtonElement>('checkUpdateBtn'),
+  openUpdateBtn:    $<HTMLButtonElement>('openUpdateBtn'),
+  dismissUpdateBtn: $<HTMLButtonElement>('dismissUpdateBtn'),
 };
 
 let initialFirstRun = false;
@@ -151,7 +177,75 @@ async function init() {
 
   // If the tray asked us to land on Diagnostics, honor #diagnostics.
   if (window.location.hash === '#diagnostics') switchTab('diagnostics');
+
+  // About / Updates (Patch 19d) — fetch initial status and wire listener.
+  try {
+    applyUpdateStatus(await updaterApi.get());
+  } catch (err) {
+    els.updateStatusText.textContent = `Update check failed: ${(err as Error).message}`;
+  }
+  updaterApi.onAvailable((s) => applyUpdateStatus(s));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// About / Updates (Patch 19d)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function fmtRelative(ts: number | null): string {
+  if (!ts) return 'never';
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function applyUpdateStatus(s: UpdateStatus) {
+  els.appVersion.textContent = `v${s.currentVersion}`;
+
+  if (s.lastError && !s.latestVersion) {
+    els.updateStatusText.textContent = `Could not check for updates: ${s.lastError}`;
+  } else if (s.updateAvailable && s.latestVersion) {
+    els.updateStatusText.textContent =
+      `Update available: v${s.latestVersion} (you have v${s.currentVersion}). Last checked ${fmtRelative(s.lastCheckedAt)}.`;
+  } else if (s.latestVersion) {
+    els.updateStatusText.textContent =
+      `You're on the latest version (v${s.currentVersion}). Last checked ${fmtRelative(s.lastCheckedAt)}.`;
+  } else {
+    els.updateStatusText.textContent = 'Checking for updates\u2026';
+  }
+
+  els.openUpdateBtn.style.display    = s.updateAvailable && s.releaseUrl ? '' : 'none';
+  els.dismissUpdateBtn.style.display = s.updateAvailable ? '' : 'none';
+}
+
+els.checkUpdateBtn.addEventListener('click', async () => {
+  const original = els.checkUpdateBtn.textContent;
+  els.checkUpdateBtn.disabled = true;
+  els.checkUpdateBtn.textContent = 'Checking\u2026';
+  try {
+    const s = await updaterApi.checkNow();
+    applyUpdateStatus(s);
+  } catch (err) {
+    els.updateStatusText.textContent = `Update check failed: ${(err as Error).message}`;
+  } finally {
+    els.checkUpdateBtn.disabled = false;
+    els.checkUpdateBtn.textContent = original;
+  }
+});
+
+els.openUpdateBtn.addEventListener('click', () => {
+  updaterApi.open();
+});
+
+els.dismissUpdateBtn.addEventListener('click', async () => {
+  try {
+    const s = await updaterApi.dismiss();
+    applyUpdateStatus(s);
+  } catch (err) {
+    els.updateStatusText.textContent = `Dismiss failed: ${(err as Error).message}`;
+  }
+});
 
 function annotateEnvSource(inputId: string, source: string, hasConfigValue: boolean) {
   const input = document.getElementById(inputId) as HTMLInputElement | null;
